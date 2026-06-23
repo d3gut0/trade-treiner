@@ -1,5 +1,6 @@
 import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
-import yahooFinance from 'yahoo-finance2';
+const YahooFinance = require('yahoo-finance2').default;
+const yahooFinance = new YahooFinance();
 import { Timeframe } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { calculateEMA, calculateVWAP, CandleInput } from '../common/indicators';
@@ -31,7 +32,7 @@ export class CandlesService {
     const period1 = new Date();
     period1.setDate(period1.getDate() - (dto.days ?? 5));
 
-    let chartResult;
+    let chartResult: any  ;
     try {
       chartResult = await yahooFinance.chart(yahooTicker, {
         period1,
@@ -44,7 +45,7 @@ export class CandlesService {
       );
     }
 
-    const quotes = chartResult?.quotes ?? [];
+    const quotes: any[] = chartResult?.quotes ?? [];
     if (quotes.length === 0) {
       throw new BadRequestException(
         `Nenhum candle retornado para ${yahooTicker} no intervalo solicitado. ` +
@@ -54,7 +55,7 @@ export class CandlesService {
 
     // filtra candles incompletos (yahoo as vezes retorna null em high/low/close)
     const validQuotes = quotes.filter(
-      (q) =>
+      (q:any) =>
         q.open != null &&
         q.high != null &&
         q.low != null &&
@@ -72,7 +73,7 @@ export class CandlesService {
     const ema9 = calculateEMA(closes, 9);
     const ema21 = calculateEMA(closes, 21);
 
-    const candleInputs: CandleInput[] = validQuotes.map((q) => ({
+    const candleInputs: CandleInput[] = validQuotes.map((q:any) => ({
       close: q.close as number,
       high: q.high as number,
       low: q.low as number,
@@ -83,7 +84,7 @@ export class CandlesService {
 
     // grava em lote. Usamos createMany com skipDuplicates pra permitir
     // re-fetch sem duplicar (unique constraint assetId+timeframe+timestamp)
-    const rows = validQuotes.map((q, i) => ({
+    const rows = validQuotes.map((q:any, i:number) => ({
       assetId: asset.id,
       timeframe: dto.timeframe,
       timestamp: new Date(q.date),
