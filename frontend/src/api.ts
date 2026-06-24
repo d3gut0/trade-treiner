@@ -1,6 +1,7 @@
 import axios from 'axios';
 import type {
   Asset,
+  Candle,
   SessionView,
   SimulatedTrade,
   Strategy,
@@ -27,9 +28,8 @@ export async function listAssets(): Promise<Asset[]> {
 export async function createSession(
   assetId: string,
   timeframe: Timeframe,
-  totalCandles: number,
 ): Promise<SessionView> {
-  const { data } = await api.post('/sessions', { assetId, timeframe, totalCandles });
+  const { data } = await api.post('/sessions', { assetId, timeframe });
   return data;
 }
 
@@ -69,12 +69,19 @@ export async function closeTradeManual(
   return data;
 }
 
+export async function getTradeChartContext(tradeId: string): Promise<{
+  trade: SimulatedTrade;
+  asset: { ticker: string };
+  candles: Candle[];
+}> {
+  const { data } = await api.get(`/trades/${tradeId}/chart-context`);
+  return data;
+}
+
 // ---------- Evaluation ----------
 export async function evaluateTrade(params: {
   tradeId: string;
-  criterioFechamentoContrario: boolean;
-  criterioRompimentoReferencia: boolean;
-  criterioMediaMudouDirecao: boolean;
+  criteriosMarcados: string[];
   textoLivre?: string;
 }) {
   const { data } = await api.post('/evaluation', params);

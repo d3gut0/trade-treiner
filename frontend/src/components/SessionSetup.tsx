@@ -18,7 +18,6 @@ export function SessionSetup({ onSessionCreated }: Props) {
   const [assets, setAssets] = useState<Asset[]>([]);
   const [assetId, setAssetId] = useState<string | null>(null);
   const [timeframe, setTimeframe] = useState<Timeframe>('M1');
-  const [totalCandles, setTotalCandles] = useState(30);
 
   const [newTicker, setNewTicker] = useState('');
   const [newTimeframe, setNewTimeframe] = useState<Timeframe>('M1');
@@ -74,7 +73,7 @@ export function SessionSetup({ onSessionCreated }: Props) {
     }
     setCreatingSession(true);
     try {
-      const view = await createSession(assetId, timeframe, totalCandles);
+      const view = await createSession(assetId, timeframe);
       onSessionCreated(view);
     } catch (err: any) {
       setError(err?.response?.data?.message ?? 'Erro ao criar sessão.');
@@ -162,17 +161,10 @@ export function SessionSetup({ onSessionCreated }: Props) {
             />
           </div>
 
-          <div>
-            <label style={{ display: 'block', marginBottom: '0.4rem', color: '#9ca3af' }}>
-              Número de candles da sessão
-            </label>
-            <InputNumber
-              value={totalCandles}
-              onValueChange={(e) => setTotalCandles(e.value ?? 30)}
-              min={10}
-              max={120}
-            />
-          </div>
+          <Message
+            severity="info"
+            text="A sessão dura até onde você quiser - sem limite de candles. Encerre manualmente quando achar adequado, evitando entrar 'por ansiedade de acabar o tempo'."
+          />
 
           <Divider />
 

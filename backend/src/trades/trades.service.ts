@@ -150,6 +150,51 @@ export class TradesService {
     });
   }
 
+  /**
+   * Retorna a janela de candles em volta de um trade especifico, para
+   * permitir revisualizar o grafico exatamente como estava na hora da
+   * decisao (mesmos dados que geraram o chart original - sem precisar
+   * de print/imagem, ja que tudo vem do banco).
+   *
+   * Janela: 20 candles antes da entrada (ou inicio da sessao, o que for
+   * menor) até 10 candles depois da saida (ou fim da sessao).
+   */
+  async getChartContext(tradeId: string) {
+    const trade = await this.prisma.simulatedTrade.findUnique({
+      where: { id: tradeId },
+      include: { session: { include: { asset: true } } },
+    });
+    if (!trade) throw new NotFoundException('Entrada não encontrada.');
+
+    const CANDLES_BEFORE = 20;
+    const CANDLES_AFTER = 10;
+
+    const windowStart = Math.max(
+      trade.session.startSequenceIndex,
+      trade.entrySequenceIndex - CANDLES_BEFORE,
+    );
+    const exitRef = trade.exitSequenceIndex ?? trade.entrySequenceIndex;
+    const windowEnd = Math.min(
+      trade.session.endSequenceIndex,
+      exitRef + CANDLES_AFTER,
+    );
+
+    const candles = await this.prisma.historicalCandle.findMany({
+      where: {
+        assetId: trade.session.assetId,
+        timeframe: trade.session.timeframe,
+        sequenceIndex: { gte: windowStart, lte: windowEnd },
+      },
+      orderBy: { sequenceIndex: 'asc' },
+    });
+
+    return {
+      trade,
+      asset: trade.session.asset,
+      candles,
+    };
+  }
+
   private validateStopCoherence(dto: OpenTradeDto) {
     if (dto.direction === 'COMPRA') {
       if (!(dto.stopGain > dto.entryPrice && dto.stopLoss < dto.entryPrice)) {

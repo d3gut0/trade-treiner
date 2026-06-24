@@ -147,20 +147,18 @@ model TradeJustification {
   tradeId String         @unique
   trade   SimulatedTrade @relation(fields: [tradeId], references: [id])
 
-  // criterios marcados pelo usuario (checkboxes)
-  criterioFechamentoContrario Boolean @default(false)
-  criterioRompimentoReferencia Boolean @default(false)
-  criterioMediaMudouDirecao   Boolean @default(false)
+  // LEGADO - mantidos para trades antigos sem estratégia (fallback de reversão)
+  // tornar opcionais (Boolean?) caso ainda estejam como Boolean obrigatório
+  criterioFechamentoContrario  Boolean?
+  criterioRompimentoReferencia Boolean?
+  criterioMediaMudouDirecao    Boolean?
 
-  textoLivre String?
+  // NOVO - dinâmico
+  criteriosMarcados      Json?
+  criteriosConfirmadosIA Json?
 
-  // resposta da IA (Groq)
-  avaliacaoIA       String? // texto do veredito
-  criteriosConfirmadosIA Json? // { fechamentoContrario: bool, rompimento: bool, mediaVirou: bool }
-  gestaoRespeitada  Boolean? // se o stop nao foi alterado / segue a regra
-  scoreIA           Int?    // 0-100, opcional
-
-  createdAt DateTime @default(now())
-
-  @@map("trade_justifications")
+  textoLivre       String?
+  avaliacaoIA       String?
+  gestaoRespeitada  Boolean?
+  scoreIA           Int?
 }

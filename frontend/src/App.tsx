@@ -3,9 +3,10 @@ import { TabMenu } from 'primereact/tabmenu';
 import { SessionSetup } from './components/SessionSetup';
 import { TrainingScreen } from './components/TrainingScreen';
 import { StrategyBank } from './components/StrategyBank';
+import { SessionHistory } from './components/SessionHistory';
 import type { SessionView } from './types';
 
-type Tab = 'treino' | 'estrategias';
+type Tab = 'treino' | 'historico' | 'estrategias';
 
 function App() {
   const [tab, setTab] = useState<Tab>('treino');
@@ -13,8 +14,12 @@ function App() {
 
   const items = [
     { label: 'Treino', icon: 'pi pi-chart-line' },
+    { label: 'Histórico', icon: 'pi pi-history' },
     { label: 'Banco de Estratégias', icon: 'pi pi-book' },
   ];
+
+  const indexToTab: Tab[] = ['treino', 'historico', 'estrategias'];
+  const tabToIndex: Record<Tab, number> = { treino: 0, historico: 1, estrategias: 2 };
 
   return (
     <div className="app-container">
@@ -25,12 +30,13 @@ function App() {
 
       <TabMenu
         model={items}
-        activeIndex={tab === 'treino' ? 0 : 1}
-        onTabChange={(e) => setTab(e.index === 0 ? 'treino' : 'estrategias')}
+        activeIndex={tabToIndex[tab]}
+        onTabChange={(e) => setTab(indexToTab[e.index])}
       />
 
       <div style={{ marginTop: '1.5rem' }}>
         {tab === 'estrategias' && <StrategyBank />}
+        {tab === 'historico' && <SessionHistory />}
 
         {tab === 'treino' &&
           (activeSession ? (

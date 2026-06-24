@@ -26,25 +26,33 @@ export class SessionsService {
    * torna o treino "as cegas" (o usuario nao sabe qual dia/hora e).
    */
   async create(dto: CreateSessionDto) {
-    const totalCandles = dto.totalCandles ?? 30;
     const totalDisponivel = await this.candlesService.countCandles(
       dto.assetId,
       dto.timeframe,
     );
 
-    if (totalDisponivel < totalCandles) {
+    // Minimo absoluto para a sessao ter sentido (pelo menos 30 candles
+    // para o usuario ter algum espaco para observar antes de operar)
+    const minCandles = 30;
+    if (totalDisponivel < minCandles) {
       throw new BadRequestException(
-        `Ativo só tem ${totalDisponivel} candles armazenados, mas a sessão precisa de ${totalCandles}. Baixe mais histórico primeiro.`,
+        `Ativo só tem ${totalDisponivel} candles. Baixe mais histórico (timeframe menor ou mais dias).`,
       );
     }
 
+    // Se startSequenceIndex nao for informado, sorteia um ponto de partida
+    // que deixe espaco suficiente para o usuario operar a vontade
+    // (reservamos ao menos 60 candles a frente).
     let startSequenceIndex = dto.startSequenceIndex;
     if (startSequenceIndex == null) {
-      const maxStart = totalDisponivel - totalCandles;
+      const maxStart = Math.max(0, totalDisponivel - 60);
       startSequenceIndex = Math.floor(Math.random() * (maxStart + 1));
     }
 
-    const endSequenceIndex = startSequenceIndex + totalCandles - 1;
+    // endSequenceIndex passa a ser o ultimo candle disponivel - sessao
+    // de tempo aberto. O usuario encerra quando quiser.
+    const endSequenceIndex = totalDisponivel - 1;
+    const totalCandles = endSequenceIndex - startSequenceIndex + 1;
 
     const session = await this.prisma.trainingSession.create({
       data: {
@@ -183,7 +191,16 @@ export class SessionsService {
   async listAll() {
     return this.prisma.trainingSession.findMany({
       orderBy: { createdAt: 'desc' },
-      include: { asset: true, _count: { select: { trades: true } } },
+      include: {
+        asset: true,
+        trades: {
+          include: {
+            justification: true,
+            strategy: true,
+          },
+          orderBy: { createdAt: 'asc' },
+        },
+      },
     });
   }
 }

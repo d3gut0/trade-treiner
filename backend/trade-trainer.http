@@ -1,0 +1,212 @@
+###
+### - INSTALAR A EXTENSAO "REST Client" NO VS CODE (humao.rest-client)
+### - Trade Trainer - rotas de teste manual, sem precisar passar pela UI
+###
+
+@hostname = http://localhost
+@port = 3500
+@host = {{hostname}}:{{port}}
+@contentType = application/json
+
+###############################################################################
+# CANDLES
+###############################################################################
+
+#--------------------------------------------------------------- candles/fetch
+# Baixa historico via Yahoo Finance (so acoes B3 - sem WIN/WDO)
+###
+POST {{host}}/candles/fetch
+Content-Type: {{contentType}}
+
+{
+  "ticker": "VALE3.SA",
+  "timeframe": "M1",
+  "days": 5
+}
+
+#--------------------------------------------------------------- candles/assets
+###
+GET {{host}}/candles/assets
+
+#--------------------------------------------------------------- candles/count
+# Troque assetId pelo id real retornado em candles/assets
+###
+GET {{host}}/candles/count?assetId=SUBSTITUA_ASSET_ID&timeframe=M1
+
+
+###############################################################################
+# SESSIONS
+###############################################################################
+
+#--------------------------------------------------------------- sessions (criar)
+# Troque assetId pelo id real retornado em candles/assets
+# @name createSession
+###
+POST {{host}}/sessions
+Content-Type: {{contentType}}
+
+{
+  "assetId": "SUBSTITUA_ASSET_ID",
+  "timeframe": "M1"
+}
+
+###
+@sessionId = {{createSession.response.body.session.id}}
+
+#--------------------------------------------------------------- sessions (listar todas)
+###
+GET {{host}}/sessions
+
+#--------------------------------------------------------------- sessions/:id (view atual)
+###
+GET {{host}}/sessions/{{sessionId}}
+
+#--------------------------------------------------------------- sessions/:id/next-candle
+###
+POST {{host}}/sessions/{{sessionId}}/next-candle
+
+#--------------------------------------------------------------- sessions/:id/finish
+###
+POST {{host}}/sessions/{{sessionId}}/finish
+
+
+###############################################################################
+# STRATEGIES
+###############################################################################
+
+#--------------------------------------------------------------- strategies (listar)
+###
+GET {{host}}/strategies
+
+#--------------------------------------------------------------- strategies (criar)
+# @name createStrategy
+###
+POST {{host}}/strategies
+Content-Type: {{contentType}}
+
+{
+  "nome": "Teste via .http",
+  "descricao": "Estrategia criada para teste manual",
+  "criterios": {
+    "regra": "teste",
+    "confirmacao": ["criterio_um", "criterio_dois"]
+  }
+}
+
+###
+@strategyId = {{createStrategy.response.body.id}}
+
+#--------------------------------------------------------------- strategies/:id (detalhe)
+###
+GET {{host}}/strategies/{{strategyId}}
+
+#--------------------------------------------------------------- strategies/:id/stats
+###
+GET {{host}}/strategies/{{strategyId}}/stats
+
+#--------------------------------------------------------------- strategies/:id (update)
+###
+PATCH {{host}}/strategies/{{strategyId}}
+Content-Type: {{contentType}}
+
+{
+  "descricao": "Descricao atualizada via .http"
+}
+
+#--------------------------------------------------------------- strategies/:id (remover)
+###
+DELETE {{host}}/strategies/{{strategyId}}
+
+
+###############################################################################
+# TRADES
+###############################################################################
+
+#--------------------------------------------------------------- trades (abrir)
+# Troque sessionId pelo id da sessao ativa e strategyId pelo id de uma estrategia
+# (ou remova a linha strategyId para testar o fallback de reversao)
+# @name openTrade
+###
+POST {{host}}/trades
+Content-Type: {{contentType}}
+
+{
+  "sessionId": "SUBSTITUA_SESSION_ID",
+  "direction": "COMPRA",
+  "entryPrice": 79.31,
+  "stopGain": 79.50,
+  "stopLoss": 79.10,
+  "strategyId": "SUBSTITUA_STRATEGY_ID"
+}
+
+###
+@tradeId = {{openTrade.response.body.id}}
+
+#--------------------------------------------------------------- trades/session/:sessionId (listar)
+###
+GET {{host}}/trades/session/SUBSTITUA_SESSION_ID
+
+#--------------------------------------------------------------- trades/:id/chart-context
+###
+GET {{host}}/trades/{{tradeId}}/chart-context
+
+#--------------------------------------------------------------- trades/:id/close (fechar manual)
+###
+POST {{host}}/trades/{{tradeId}}/close
+Content-Type: {{contentType}}
+
+{
+  "exitPrice": 79.45
+}
+
+
+###############################################################################
+# EVALUATION - o endpoint que estamos depurando agora
+###############################################################################
+
+#--------------------------------------------------------------- evaluation (COM strategy vinculada)
+# Use as MESMAS chaves do array "confirmacao" da strategy vinculada ao trade.
+# Ex: para "Cruzamento EMA9/EMA21" as chaves sao algo como:
+#   ["fechamento_contrario", "media_mudou_direcao"]
+# Troque tradeId por um trade real ja encerrado (GAIN/LOSS) e sem justificativa ainda.
+###
+POST {{host}}/evaluation
+Content-Type: {{contentType}}
+
+{
+  "tradeId": "SUBSTITUA_TRADE_ID",
+  "criteriosMarcados": ["fechamento_contrario", "media_mudou_direcao"],
+  "textoLivre": "Teste manual via .http - estrategia com criterios dinamicos"
+}
+
+#--------------------------------------------------------------- evaluation (SEM strategy - fallback reversao)
+# Para um trade SEM strategyId, as chaves esperadas sao as 3 fixas legadas:
+#   fechamentoContrario, rompimentoReferencia, mediaMudouDirecao
+###
+POST {{host}}/evaluation
+Content-Type: {{contentType}}
+
+{
+  "tradeId": "SUBSTITUA_TRADE_ID_SEM_STRATEGY",
+  "criteriosMarcados": ["fechamentoContrario", "mediaMudouDirecao"],
+  "textoLivre": "Teste manual via .http - fallback de reversao sem estrategia"
+}
+
+#--------------------------------------------------------------- evaluation (payload INVALIDO de propósito)
+# Util para confirmar que a validacao do DTO esta funcionando (deve dar 400,
+# nao 404 - se der 404 aqui tambem, o problema e rota/build, nao payload)
+###
+POST {{host}}/evaluation
+Content-Type: {{contentType}}
+
+{
+  "tradeId": "cea6dba5-d0b2-4cdb-8e03-5ab40c3b7ae5",
+  "criteriosMarcados": "isso deveria ser um array, nao string"
+}
+
+
+#--------------------------------------------------------------- testar groq
+
+###
+GET https://api.groq.com/openai/v1/models
+Content-Type: {{contentType}}

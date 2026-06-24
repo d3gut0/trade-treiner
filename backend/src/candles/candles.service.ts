@@ -1,4 +1,9 @@
 import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
+// yahoo-finance2 v3+ exporta a CLASSE YahooFinance como default (breaking
+// change da v2 para v3 - antes era um singleton já instanciado). Por isso
+// precisamos instanciar com `new YahooFinance()` antes de usar.
+// Ver: https://github.com/gadicc/yahoo-finance2/blob/dev/docs/UPGRADING.md
+// eslint-disable-next-line @typescript-eslint/no-var-requires
 const YahooFinance = require('yahoo-finance2').default;
 const yahooFinance = new YahooFinance();
 import { Timeframe } from '@prisma/client';
@@ -32,7 +37,7 @@ export class CandlesService {
     const period1 = new Date();
     period1.setDate(period1.getDate() - (dto.days ?? 5));
 
-    let chartResult: any  ;
+    let chartResult: any;
     try {
       chartResult = await yahooFinance.chart(yahooTicker, {
         period1,
@@ -54,8 +59,11 @@ export class CandlesService {
     }
 
     // filtra candles incompletos (yahoo as vezes retorna null em high/low/close)
+    // Nota: como yahooFinance agora vem de require() (sem tipos estaticos),
+    // anotamos explicitamente `q: any` nos callbacks abaixo para satisfazer
+    // o strict mode do TypeScript (noImplicitAny).
     const validQuotes = quotes.filter(
-      (q:any) =>
+      (q: any) =>
         q.open != null &&
         q.high != null &&
         q.low != null &&
@@ -69,11 +77,11 @@ export class CandlesService {
       create: { ticker: yahooTicker, nome: dto.ticker.toUpperCase() },
     });
 
-    const closes = validQuotes.map((q) => q.close as number);
+    const closes = validQuotes.map((q: any) => q.close as number);
     const ema9 = calculateEMA(closes, 9);
     const ema21 = calculateEMA(closes, 21);
 
-    const candleInputs: CandleInput[] = validQuotes.map((q:any) => ({
+    const candleInputs: CandleInput[] = validQuotes.map((q: any) => ({
       close: q.close as number,
       high: q.high as number,
       low: q.low as number,
@@ -84,7 +92,7 @@ export class CandlesService {
 
     // grava em lote. Usamos createMany com skipDuplicates pra permitir
     // re-fetch sem duplicar (unique constraint assetId+timeframe+timestamp)
-    const rows = validQuotes.map((q:any, i:number) => ({
+    const rows = validQuotes.map((q: any, i: number) => ({
       assetId: asset.id,
       timeframe: dto.timeframe,
       timestamp: new Date(q.date),

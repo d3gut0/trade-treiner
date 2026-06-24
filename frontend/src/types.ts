@@ -56,16 +56,18 @@ export interface TrainingSession {
 export interface TradeJustification {
   id: string;
   tradeId: string;
-  criterioFechamentoContrario: boolean;
-  criterioRompimentoReferencia: boolean;
-  criterioMediaMudouDirecao: boolean;
+
+  // legado - só preenchido quando o trade não tem strategy vinculada
+  criterioFechamentoContrario: boolean | null;
+  criterioRompimentoReferencia: boolean | null;
+  criterioMediaMudouDirecao: boolean | null;
+
+  // novo - dinâmico
+  criteriosMarcados: string[] | null;
+  criteriosConfirmadosIA: Record<string, boolean | null> | null;
+
   textoLivre: string | null;
   avaliacaoIA: string | null;
-  criteriosConfirmadosIA: {
-    fechamentoContrario: boolean;
-    rompimentoReferencia: boolean;
-    mediaMudouDirecao: boolean;
-  } | null;
   gestaoRespeitada: boolean | null;
   scoreIA: number | null;
 }

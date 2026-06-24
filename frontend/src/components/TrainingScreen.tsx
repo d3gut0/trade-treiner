@@ -2,7 +2,6 @@ import { useEffect, useState } from 'react';
 import { Card } from 'primereact/card';
 import { Button } from 'primereact/button';
 import { Tag } from 'primereact/tag';
-import { ProgressBar } from 'primereact/progressbar';
 import { Message } from 'primereact/message';
 import { TradeChart } from './TradeChart';
 import { ExecutionPanel } from './ExecutionPanel';
@@ -90,12 +89,11 @@ export function TrainingScreen({ sessionId, initialView, onExit }: Props) {
     }
   };
 
-  const handleEvaluate = async (params: {
-    criterioFechamentoContrario: boolean;
-    criterioRompimentoReferencia: boolean;
-    criterioMediaMudouDirecao: boolean;
-    textoLivre?: string;
-  }) => {
+  // Atualizado: agora recebe a lista dinamica de criterios marcados em vez
+  // dos 3 booleanos fixos. O JustificationPanel ja resolve quais criterios
+  // sao validos para o trade (via strategy vinculada ou fallback de reversao)
+  // e manda so as chaves marcadas aqui.
+  const handleEvaluate = async (params: { criteriosMarcados: string[]; textoLivre?: string }) => {
     const tradeToEvaluate = view.trades.find(
       (t) => t.result !== 'EM_ANDAMENTO' && !t.justification?.avaliacaoIA,
     );
@@ -114,7 +112,6 @@ export function TrainingScreen({ sessionId, initialView, onExit }: Props) {
     (t) => t.result !== 'EM_ANDAMENTO' && !t.justification?.avaliacaoIA,
   );
   const currentCandle = view.candles[view.candles.length - 1];
-  const progressPct = (view.candlesRevealed / view.totalCandles) * 100;
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
@@ -122,13 +119,11 @@ export function TrainingScreen({ sessionId, initialView, onExit }: Props) {
         <div>
           <Tag value={view.session.status} severity={view.session.status === 'FINALIZADA' ? 'success' : 'info'} />
           <span style={{ marginLeft: '0.75rem', color: '#9ca3af' }}>
-            Candle {view.candlesRevealed} de {view.totalCandles}
+            {view.candlesRevealed} candle(s) revelado(s) — sessao aberta até você encerrar
           </span>
         </div>
         <Button label="Voltar ao início" icon="pi pi-arrow-left" outlined onClick={onExit} />
       </div>
-
-      <ProgressBar value={progressPct} showValue={false} style={{ height: '6px' }} />
 
       <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '1.5rem' }}>
         <Card>

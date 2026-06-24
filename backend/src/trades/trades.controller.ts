@@ -20,6 +20,13 @@ export class TradesController {
     return this.tradesService.findBySession(sessionId);
   }
 
+  // retorna os candles ao redor do trade, para re-renderizar o grafico
+  // exatamente como estava na hora da decisao (sem precisar de print)
+  @Get(':id/chart-context')
+  getChartContext(@Param('id') id: string) {
+    return this.tradesService.getChartContext(id);
+  }
+
   // fecha manualmente uma entrada em andamento, usando o sequenceIndex
   // do candle atualmente revelado na sessao
   @Post(':id/close')
