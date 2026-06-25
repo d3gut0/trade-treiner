@@ -93,7 +93,12 @@ export function TrainingScreen({ sessionId, initialView, onExit }: Props) {
   // dos 3 booleanos fixos. O JustificationPanel ja resolve quais criterios
   // sao validos para o trade (via strategy vinculada ou fallback de reversao)
   // e manda so as chaves marcadas aqui.
-  const handleEvaluate = async (params: { criteriosMarcados: string[]; textoLivre?: string }) => {
+  const handleEvaluate = async (params: {
+  criterioFechamentoContrario: boolean;
+  criterioRompimentoReferencia: boolean;
+  criterioMediaMudouDirecao: boolean;
+  textoLivre?: string;
+}) => {
     const tradeToEvaluate = view.trades.find(
       (t) => t.result !== 'EM_ANDAMENTO' && !t.justification?.avaliacaoIA,
     );

@@ -147,14 +147,10 @@ model TradeJustification {
   tradeId String         @unique
   trade   SimulatedTrade @relation(fields: [tradeId], references: [id])
 
-  // LEGADO - mantidos para trades antigos sem estratégia (fallback de reversão)
-  // tornar opcionais (Boolean?) caso ainda estejam como Boolean obrigatório
-  criterioFechamentoContrario  Boolean?
-  criterioRompimentoReferencia Boolean?
-  criterioMediaMudouDirecao    Boolean?
+  criterioFechamentoContrario  Boolean
+  criterioRompimentoReferencia Boolean
+  criterioMediaMudouDirecao    Boolean
 
-  // NOVO - dinâmico
-  criteriosMarcados      Json?
   criteriosConfirmadosIA Json?
 
   textoLivre       String?

@@ -81,7 +81,9 @@ export async function getTradeChartContext(tradeId: string): Promise<{
 // ---------- Evaluation ----------
 export async function evaluateTrade(params: {
   tradeId: string;
-  criteriosMarcados: string[];
+  criterioFechamentoContrario: boolean;
+  criterioRompimentoReferencia: boolean;
+  criterioMediaMudouDirecao: boolean;
   textoLivre?: string;
 }) {
   const { data } = await api.post('/evaluation', params);
