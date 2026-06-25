@@ -8,6 +8,31 @@ export type TradeResult =
   | 'EM_ANDAMENTO';
 export type SessionStatus = 'EM_ANDAMENTO' | 'FINALIZADA';
 export type AvaliacaoIAStatus = 'PENDENTE' | 'AVALIADO' | 'ERRO';
+export type CoachingTipStatus = 'PENDENTE' | 'GERADO' | 'ERRO';
+export type ComparacaoTiming = 'CEDO_DEMAIS' | 'TARDE_DEMAIS' | 'NO_PONTO_CERTO';
+
+export interface CoachingTipContent {
+  entradaIdeal: {
+    sequenceIndex: number | null;
+    justificativa: string;
+    comparacaoComEntradaReal: ComparacaoTiming;
+  };
+  saidaIdeal: {
+    sequenceIndex: number | null;
+    justificativa: string;
+    comparacaoComSaidaReal: ComparacaoTiming;
+  };
+  resumo: string;
+}
+
+export interface CoachingTip {
+  id: string;
+  tradeId: string;
+  status: CoachingTipStatus;
+  erro: string | null;
+  conteudo: CoachingTipContent | null;
+  geradoEm: string | null;
+}
 
 export interface Asset {
   id: string;
@@ -90,6 +115,7 @@ export interface SimulatedTrade {
   createdAt: string;
   closedAt: string | null;
   justification?: TradeJustification | null;
+  coachingTip?: CoachingTip | null;
 }
 
 export interface SessionView {

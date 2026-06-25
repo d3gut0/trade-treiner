@@ -86,7 +86,7 @@ export class SessionsService {
 
     const trades = await this.prisma.simulatedTrade.findMany({
       where: { sessionId },
-      include: { justification: true, strategy: true },
+      include: { justification: true, strategy: true, coachingTip: true },
       orderBy: { createdAt: 'asc' },
     });
 
@@ -197,6 +197,7 @@ export class SessionsService {
           include: {
             justification: true,
             strategy: true,
+            coachingTip: true,
           },
           orderBy: { createdAt: 'asc' },
         },

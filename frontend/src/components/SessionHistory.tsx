@@ -7,7 +7,8 @@ import { Accordion, AccordionTab } from 'primereact/accordion';
 import { Divider } from 'primereact/divider';
 import { api, runAiEvaluation } from '../api';
 import { TradeChartModal } from './TradeChartModal';
-import type { AvaliacaoIAStatus } from '../types';
+import { CoachingTipPanel } from './CoachingTipPanel';
+import type { AvaliacaoIAStatus, CoachingTip } from '../types';
 
 interface SessionWithTrades {
   id: string;
@@ -26,6 +27,7 @@ interface SessionWithTrades {
     result: string;
     createdAt: string;
     strategy: { nome: string } | null;
+    coachingTip: CoachingTip | null;
     justification: {
       criterioFechamentoContrario: boolean;
       criterioRompimentoReferencia: boolean;
@@ -61,6 +63,7 @@ export function SessionHistory() {
   const [loading, setLoading] = useState(true);
   const [chartTradeId, setChartTradeId] = useState<string | null>(null);
   const [evaluatingTradeId, setEvaluatingTradeId] = useState<string | null>(null);
+  const [expandedTipTradeId, setExpandedTipTradeId] = useState<string | null>(null);
 
   const load = () => {
     return api.get('/sessions').then((r) => setSessions(r.data));
@@ -160,6 +163,7 @@ export function SessionHistory() {
                     : trade.result === 'LOSS'
                       ? 'danger'
                       : 'warning';
+                const tipExpanded = expandedTipTradeId === trade.id;
 
                 return (
                   <div
@@ -200,7 +204,25 @@ export function SessionHistory() {
                         text
                         onClick={() => setChartTradeId(trade.id)}
                       />
+                      <Button
+                        label={tipExpanded ? 'Ocultar dica' : 'Dica de timing (IA)'}
+                        icon="pi pi-lightbulb"
+                        size="small"
+                        text
+                        severity={trade.coachingTip?.status === 'GERADO' ? 'success' : undefined}
+                        onClick={() => setExpandedTipTradeId(tipExpanded ? null : trade.id)}
+                      />
                     </div>
+
+                    {tipExpanded && (
+                      <div style={{ marginBottom: '0.75rem' }}>
+                        <CoachingTipPanel
+                          key={trade.id}
+                          tradeId={trade.id}
+                          initialTip={trade.coachingTip}
+                        />
+                      </div>
+                    )}
 
                     {j ? (
                       <>

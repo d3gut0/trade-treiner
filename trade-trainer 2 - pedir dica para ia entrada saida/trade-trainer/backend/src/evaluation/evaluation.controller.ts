@@ -28,6 +28,14 @@ export class EvaluationController {
     return this.evaluationService.listPendingEvaluations();
   }
 
+  // Gera (ou regenera) uma dica de coaching sobre timing de entrada/saida
+  // para um trade especifico. Independente do fluxo de justificativa -
+  // pode ser chamado em qualquer momento.
+  @Post(':tradeId/coaching-tip')
+  getCoachingTip(@Param('tradeId') tradeId: string) {
+    return this.evaluationService.getCoachingTip(tradeId);
+  }
+
   // HEALTH CHECK: checa se a integracao com o Gemini esta online,
   // sem tocar no banco.
   @Get('test-gemini')

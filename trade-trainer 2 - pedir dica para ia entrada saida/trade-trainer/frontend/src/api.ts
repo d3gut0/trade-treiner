@@ -2,6 +2,7 @@ import axios from 'axios';
 import type {
   Asset,
   Candle,
+  CoachingTip,
   SessionView,
   SimulatedTrade,
   Strategy,
@@ -102,6 +103,13 @@ export async function runAiEvaluation(tradeId: string) {
 // Lista justificativas pendentes ou com erro de avaliação por IA.
 export async function listPendingEvaluations() {
   const { data } = await api.get('/evaluation/pending');
+  return data;
+}
+
+// Gera (ou regenera) uma dica de coaching sobre timing de entrada/saída
+// para um trade específico - independente do fluxo de justificativa.
+export async function getCoachingTip(tradeId: string): Promise<CoachingTip> {
+  const { data } = await api.post(`/evaluation/${tradeId}/coaching-tip`);
   return data;
 }
 

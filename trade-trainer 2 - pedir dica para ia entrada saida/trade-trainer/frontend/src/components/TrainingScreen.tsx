@@ -6,6 +6,7 @@ import { Message } from 'primereact/message';
 import { TradeChart } from './TradeChart';
 import { ExecutionPanel } from './ExecutionPanel';
 import { JustificationPanel } from './JustificationPanel';
+import { CoachingTipPanel } from './CoachingTipPanel';
 import {
   getSessionView,
   revealNextCandle,
@@ -142,6 +143,11 @@ export function TrainingScreen({ sessionId, initialView, onExit }: Props) {
   );
   const currentCandle = view.candles[view.candles.length - 1];
 
+  // ultimo trade encerrado (qualquer status de justificativa) - usado para
+  // oferecer a dica de coaching, que e independente do fluxo de justificativa
+  const closedTrades = view.trades.filter((t) => t.result !== 'EM_ANDAMENTO');
+  const lastClosedTrade = closedTrades[closedTrades.length - 1];
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -197,6 +203,14 @@ export function TrainingScreen({ sessionId, initialView, onExit }: Props) {
               onOpenTrade={handleOpenTrade}
               onCloseManual={handleCloseManual}
               busy={busy}
+            />
+          )}
+
+          {lastClosedTrade && (
+            <CoachingTipPanel
+              key={lastClosedTrade.id}
+              tradeId={lastClosedTrade.id}
+              initialTip={lastClosedTrade.coachingTip}
             />
           )}
         </div>

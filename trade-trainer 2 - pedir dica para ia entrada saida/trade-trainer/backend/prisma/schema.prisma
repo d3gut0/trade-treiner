@@ -41,6 +41,12 @@ enum AvaliacaoIAStatus {
   ERRO       // tentativa de avaliacao falhou (ex: rede, API key invalida)
 }
 
+enum CoachingTipStatus {
+  PENDENTE   // ainda nao foi pedida nenhuma dica para este trade
+  GERADO     // IA gerou a dica com sucesso
+  ERRO       // tentativa de gerar a dica falhou
+}
+
 model Asset {
   id        String   @id @default(uuid())
   ticker    String   @unique // ex: PETR4.SA, VALE3.SA
@@ -144,6 +150,7 @@ model SimulatedTrade {
   closedAt  DateTime?
 
   justification TradeJustification?
+  coachingTip   CoachingTip?
 
   @@map("simulated_trades")
 }
@@ -176,4 +183,28 @@ model TradeJustification {
   createdAt DateTime @default(now())
 
   @@map("trade_justifications")
+}
+
+// Dica de coaching gerada por IA sobre timing de entrada/saida de um trade
+// especifico, considerando a estrategia vinculada (se houver). Independente
+// da TradeJustification - pode ser pedida em qualquer momento, mesmo sem o
+// usuario ter justificado o trade ainda.
+model CoachingTip {
+  id      String         @id @default(uuid())
+  tradeId String         @unique
+  trade   SimulatedTrade @relation(fields: [tradeId], references: [id])
+
+  status CoachingTipStatus @default(PENDENTE)
+  erro   String? // mensagem de erro da ultima tentativa, se houver
+
+  // resposta da IA (Google Gemini), estruturada em JSON:
+  // { entradaIdeal: { sequenceIndex, justificativa, comparacaoComEntradaReal },
+  //   saidaIdeal: { sequenceIndex, justificativa, comparacaoComSaidaReal },
+  //   resumo }
+  conteudo Json?
+
+  geradoEm  DateTime?
+  createdAt DateTime @default(now())
+
+  @@map("coaching_tips")
 }
