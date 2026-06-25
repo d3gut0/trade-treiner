@@ -192,6 +192,23 @@ Content-Type: {{contentType}}
   "textoLivre": "Teste manual via .http - fallback de reversao sem estrategia"
 }
 
+
+#--------------------------------------------------------------- evaluation (SEM strategy - fallback reversao)
+# Para um trade SEM strategyId, as chaves esperadas sao as 3 fixas legadas:
+#   fechamentoContrario, rompimentoReferencia, mediaMudouDirecao
+###
+POST {{host}}/evaluation
+Content-Type: {{contentType}}
+
+{
+    "tradeId": "ce503d3c-7cd5-4dc5-b71e-3731dae271b1",
+    "criterioFechamentoContrario": false,
+    "criterioRompimentoReferencia": false,
+    "criterioMediaMudouDirecao": true,
+    "textoLivre": "deu"
+}
+
+
 #--------------------------------------------------------------- evaluation (payload INVALIDO de propósito)
 # Util para confirmar que a validacao do DTO esta funcionando (deve dar 400,
 # nao 404 - se der 404 aqui tambem, o problema e rota/build, nao payload)
@@ -206,7 +223,12 @@ Content-Type: {{contentType}}
 
 
 #--------------------------------------------------------------- testar groq
+###############################################################################
+# DIAGNÓSTICO DA IA (GROQ)
+###############################################################################
 
+#--------------------------------------------------------------- testar groq
+# Executa um ping isolado para verificar se a API Key é válida e se o modelo responde
 ###
-GET https://api.groq.com/openai/v1/models
-Content-Type: {{contentType}}
+# GET {{host}}/evaluation/test-groq
+GET {{host}}/evaluation/test-gemini

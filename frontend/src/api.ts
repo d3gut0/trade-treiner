@@ -86,6 +86,7 @@ export async function evaluateTrade(params: {
   criterioMediaMudouDirecao: boolean;
   textoLivre?: string;
 }) {
+  console.log('evaluateTrade', params);
   const { data } = await api.post('/evaluation', params);
   return data;
 }
