@@ -3,7 +3,16 @@ import Groq from 'groq-sdk';
 import { PrismaService } from '../prisma/prisma.service';
 import { EvaluateTradeDto } from './dto/evaluate-trade.dto';
 
+// Quantos candles ANTES da entrada mandamos pra IA como contexto.
+// Numero pequeno o suficiente pra manter o payload (e o custo) baixo,
+// mas suficiente pra IA avaliar estrutura de movimento.
 const CONTEXT_CANDLES_BEFORE_ENTRY = 12;
+
+interface CriteriosConfirmadosIA {
+  fechamentoContrario: boolean | null;
+  rompimentoReferencia: boolean | null;
+  mediaMudouDirecao: boolean | null;
+}
 
 @Injectable()
 export class EvaluationService {
@@ -26,6 +35,8 @@ export class EvaluationService {
       );
     }
 
+    // pega os candles de contexto: do inicio da sessao (ou N antes da entrada,
+    // o que for maior) até o candle de saida
     const contextStart = Math.max(
       trade.session.startSequenceIndex,
       trade.entrySequenceIndex - CONTEXT_CANDLES_BEFORE_ENTRY,
@@ -44,24 +55,18 @@ export class EvaluationService {
     const payload = this.buildNumericPayload(trade, candles);
 
     let avaliacaoIA: string;
-    let criteriosConfirmadosIA: {
-      fechamentoContrario: boolean;
-      rompimentoReferencia: boolean;
-      mediaMudouDirecao: boolean;
-    };
+    let criteriosConfirmadosIA: CriteriosConfirmadosIA;
     let gestaoRespeitada: boolean;
     let scoreIA: number;
 
     if (!this.groq) {
-      avaliacaoIA =
-        '[GROQ_API_KEY não configurada - avaliação de IA não executada. Configure a variável de ambiente para avaliação real.]';
-      criteriosConfirmadosIA = {
-        fechamentoContrario: dto.criterioFechamentoContrario,
-        rompimentoReferencia: dto.criterioRompimentoReferencia,
-        mediaMudouDirecao: dto.criterioMediaMudouDirecao,
-      };
-      gestaoRespeitada = true;
-      scoreIA = 0;
+      // sem API key configurada - retorna uma avaliacao basica local,
+      // mas deixa claro que a IA nao foi de fato consultada
+      const fallback = this.buildLocalFallback(dto);
+      avaliacaoIA = fallback.avaliacaoIA;
+      criteriosConfirmadosIA = fallback.criteriosConfirmadosIA;
+      gestaoRespeitada = fallback.gestaoRespeitada;
+      scoreIA = fallback.scoreIA;
     } else {
       const aiResult = await this.callGroq(payload, dto);
       avaliacaoIA = aiResult.avaliacaoIA;
@@ -98,6 +103,11 @@ export class EvaluationService {
     return justification;
   }
 
+  /**
+   * Monta o payload SOMENTE com numeros (OHLC + indicadores) - sem imagem,
+   * sem texto especulativo. Isso e o que torna a chamada barata e mais
+   * confiavel para niveis de preco exatos.
+   */
   private buildNumericPayload(trade: any, candles: any[]) {
     return {
       direction: trade.direction,
@@ -127,52 +137,68 @@ export class EvaluationService {
     dto: EvaluateTradeDto,
   ): Promise<{
     avaliacaoIA: string;
-    criteriosConfirmadosIA: {
-      fechamentoContrario: boolean;
-      rompimentoReferencia: boolean;
-      mediaMudouDirecao: boolean;
-    };
+    criteriosConfirmadosIA: CriteriosConfirmadosIA;
     gestaoRespeitada: boolean;
     scoreIA: number;
   }> {
+    const criteriosMarcados: string[] = [];
+    if (dto.criterioFechamentoContrario) criteriosMarcados.push('fechamentoContrario');
+    if (dto.criterioRompimentoReferencia) criteriosMarcados.push('rompimentoReferencia');
+    if (dto.criterioMediaMudouDirecao) criteriosMarcados.push('mediaMudouDirecao');
+
     const systemPrompt = `Você é um mentor objetivo de day trade, especializado em revisar disciplina de entrada e saída.
-Você recebe dados NUMÉRICOS de candles (OHLC) e indicadores (EMA9, EMA21, VWAP) e o trade que o usuário simulou.
-NÃO invente preços. Avalie estritamente com base nos números fornecidos.
+Você recebe dados NUMÉRICOS de candles (OHLC) e indicadores (EMA9, EMA21, VWAP), o trade que o usuário simulou,
+a estratégia que ele vinculou (se houver) e a justificativa que ele deu. NÃO invente preços. Avalie estritamente
+com base nos números fornecidos.
 
-Os 3 critérios de confirmação de reversão são:
-- fechamentoContrario: o candle fechou no sentido contrário ao movimento anterior (corpo, não pavio).
-- rompimentoReferencia: o preço rompeu o último fundo/topo de referência (pivô + correção + novo teste).
-- mediaMudouDirecao: a média rápida (EMA9) já mudou de direção (não só desacelerou).
+IMPORTANTE - REGRA DE ESCOPO DA AVALIAÇÃO:
+O usuário tem 3 critérios pessoais de confirmação que ele usa especificamente para decidir ENTRADAS DE REVERSÃO
+(operar contra o movimento anterior, apostando que ele está virando). Esses critérios NÃO são um checklist
+universal obrigatório para toda e qualquer entrada - eles só fazem sentido quando o usuário está de fato tentando
+uma reversão.
 
-O usuário alegou quais desses critérios bateram. Avalie, com base nos números dos candles, se essas
-alegações realmente se sustentam.
+Os 3 critérios são:
+1. fechamentoContrario: o candle de entrada (ou o candle imediatamente anterior) fechou no sentido contrário ao
+   movimento prévio, não apenas pavio.
+2. rompimentoReferencia: o preço rompeu o último fundo/topo de referência visível na janela de candles fornecida.
+3. mediaMudouDirecao: a EMA9 mudou de inclinação (não apenas desacelerou) na direção da nova entrada.
 
-Também avalie gestaoRespeitada: true se o resultado é coerente com stopGain/stopLoss definidos.
+REGRAS PARA SUA AVALIAÇÃO:
+- Avalie SOMENTE os critérios que aparecem na lista "criteriosQueOUsuarioMarcou" do prompt do usuário. Para
+  qualquer critério que NÃO esteja nessa lista, retorne null nesse campo de "criteriosConfirmadosIA" - não invente
+  uma avaliação para um critério que o usuário nem alegou ter seguido.
+- Se a lista de critérios marcados estiver vazia, ou se a estratégia vinculada (campo "estrategiaVinculada") for
+  claramente uma lógica diferente de reversão (ex: "Cruzamento EMA9/EMA21", "Pullback à VWAP", continuação de
+  tendência), NÃO penalize a entrada por "não confirmar os 3 critérios de reversão" - esse julgamento só se aplica
+  quando o próprio usuário está tentando uma reversão. Avalie a entrada pela lógica que ele de fato usou.
+- O comentário em "avaliacaoIA" deve mencionar apenas os critérios relevantes ao que o usuário realmente alegou
+  (critérios marcados e/ou estratégia vinculada), nunca cobrar critérios que ele não disse estar usando.
+
+Também avalie gestaoRespeitada: true se o resultado é coerente com stopGain/stopLoss definidos (ou seja, o usuário
+não teria motivo aparente para ter alterado o stop no meio - isso é mais sobre se a estrutura do trade é coerente,
+já que o stop é travado no sistema e não pode ser alterado).
 
 Responda SOMENTE em JSON válido, sem markdown, sem texto fora do JSON, no formato exato:
 {
-  "avaliacaoIA": "string em português, 2 a 4 frases, comentário objetivo",
-  "criteriosConfirmadosIA": {
-    "fechamentoContrario": boolean,
-    "rompimentoReferencia": boolean,
-    "mediaMudouDirecao": boolean
-  },
+  "avaliacaoIA": "string em português, 2 a 4 frases, comentário objetivo sobre os critérios que o usuário realmente alegou seguir (marcados e/ou pela estratégia vinculada) - nunca cobre critérios não alegados",
+  "criteriosConfirmadosIA": { "fechamentoContrario": boolean ou null, "rompimentoReferencia": boolean ou null, "mediaMudouDirecao": boolean ou null },
   "gestaoRespeitada": boolean,
-  "scoreIA": number de 0 a 100
+  "scoreIA": number de 0 a 100 representando qualidade geral da decisão, considerando apenas o que o usuário alegou seguir
 }`;
 
     const userPrompt = `DADOS DO TRADE:
 ${JSON.stringify(payload, null, 2)}
 
-ALEGAÇÕES DO USUÁRIO:
-- fechamentoContrario: ${dto.criterioFechamentoContrario}
-- rompimentoReferencia: ${dto.criterioRompimentoReferencia}
-- mediaMudouDirecao: ${dto.criterioMediaMudouDirecao}
+criteriosQueOUsuarioMarcou: ${JSON.stringify(criteriosMarcados)}
+(esta é a lista de critérios que o usuário alega ter seguido - avalie SOMENTE estes; retorne null para os demais)
+
+estrategiaVinculada: ${payload.estrategiaVinculada ?? '(nenhuma)'}
 
 JUSTIFICATIVA EM TEXTO DO USUÁRIO:
 "${dto.textoLivre ?? '(não informado)'}"
 
-Avalie com base nos números dos candles se cada alegação realmente bateu.`;
+Avalie com base nos números dos candles se os critérios da lista "criteriosQueOUsuarioMarcou" realmente bateram,
+e dê seu veredito. Não avalie critérios fora dessa lista.`;
 
     try {
       const completion = await this.groq!.chat.completions.create({
@@ -188,24 +214,39 @@ Avalie com base nos números dos candles se cada alegação realmente bateu.`;
       const raw = completion.choices[0]?.message?.content ?? '{}';
       const parsed = JSON.parse(raw);
 
+      const normalizeCriterio = (value: unknown): boolean | null =>
+        value === true || value === false ? value : null;
+
       return {
         avaliacaoIA: parsed.avaliacaoIA ?? 'IA não retornou comentário.',
         criteriosConfirmadosIA: {
-          fechamentoContrario: !!parsed.criteriosConfirmadosIA?.fechamentoContrario,
-          rompimentoReferencia: !!parsed.criteriosConfirmadosIA?.rompimentoReferencia,
-          mediaMudouDirecao: !!parsed.criteriosConfirmadosIA?.mediaMudouDirecao,
+          fechamentoContrario: normalizeCriterio(parsed.criteriosConfirmadosIA?.fechamentoContrario),
+          rompimentoReferencia: normalizeCriterio(parsed.criteriosConfirmadosIA?.rompimentoReferencia),
+          mediaMudouDirecao: normalizeCriterio(parsed.criteriosConfirmadosIA?.mediaMudouDirecao),
         },
         gestaoRespeitada: !!parsed.gestaoRespeitada,
         scoreIA: typeof parsed.scoreIA === 'number' ? parsed.scoreIA : 50,
       };
     } catch (err: any) {
-      console.log('[DEBUG] Erro na chamada Groq:', {
-        message: err.message,
-        status: err.status,
-        code: err.code,
-        response: err.response?.data,
-      });
       throw new BadRequestException(`Falha ao avaliar via Groq: ${err.message}`);
     }
+  }
+
+  /**
+   * Fallback usado apenas se GROQ_API_KEY nao estiver configurada -
+   * evita quebrar o fluxo, mas deixa claro que nao houve avaliacao real de IA.
+   */
+  private buildLocalFallback(dto: EvaluateTradeDto) {
+    return {
+      avaliacaoIA:
+        '[GROQ_API_KEY não configurada - avaliação de IA não executada. Configure a variável de ambiente para avaliação real.]',
+      criteriosConfirmadosIA: {
+        fechamentoContrario: dto.criterioFechamentoContrario,
+        rompimentoReferencia: dto.criterioRompimentoReferencia,
+        mediaMudouDirecao: dto.criterioMediaMudouDirecao,
+      },
+      gestaoRespeitada: true,
+      scoreIA: 0,
+    };
   }
 }

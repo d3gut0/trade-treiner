@@ -23,9 +23,6 @@ export function StrategyBank() {
       data.map(async (s) => [s.id, await getStrategyStats(s.id)] as const),
     );
     setStats(Object.fromEntries(statsEntries));
-
-    // console.log('stats keys:', Object.keys(Object.fromEntries(statsEntries)));
-    // console.log('strategy ids:', data.map((s) => s.id));
   };
 
   useEffect(() => {
@@ -72,7 +69,6 @@ export function StrategyBank() {
             header="Taxa de acerto"
             body={(row: Strategy) => {
               const taxa = stats[row.id]?.taxaAcerto;
-              // console.log('row.id:', JSON.stringify(row.id), 'stats obj:', JSON.stringify(stats[row.id]));
               if (taxa == null) return <Tag value="sem dados" severity="secondary" />;
               const severity = taxa >= 60 ? 'success' : taxa >= 40 ? 'warning' : 'danger';
               return <Tag value={`${taxa.toFixed(0)}%`} severity={severity} />;

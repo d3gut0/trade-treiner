@@ -89,16 +89,12 @@ export function TrainingScreen({ sessionId, initialView, onExit }: Props) {
     }
   };
 
-  // Atualizado: agora recebe a lista dinamica de criterios marcados em vez
-  // dos 3 booleanos fixos. O JustificationPanel ja resolve quais criterios
-  // sao validos para o trade (via strategy vinculada ou fallback de reversao)
-  // e manda so as chaves marcadas aqui.
   const handleEvaluate = async (params: {
-  criterioFechamentoContrario: boolean;
-  criterioRompimentoReferencia: boolean;
-  criterioMediaMudouDirecao: boolean;
-  textoLivre?: string;
-}) => {
+    criterioFechamentoContrario: boolean;
+    criterioRompimentoReferencia: boolean;
+    criterioMediaMudouDirecao: boolean;
+    textoLivre?: string;
+  }) => {
     const tradeToEvaluate = view.trades.find(
       (t) => t.result !== 'EM_ANDAMENTO' && !t.justification?.avaliacaoIA,
     );
@@ -124,7 +120,7 @@ export function TrainingScreen({ sessionId, initialView, onExit }: Props) {
         <div>
           <Tag value={view.session.status} severity={view.session.status === 'FINALIZADA' ? 'success' : 'info'} />
           <span style={{ marginLeft: '0.75rem', color: '#9ca3af' }}>
-            {view.candlesRevealed} candle(s) revelado(s) — sessao aberta até você encerrar
+            {view.candlesRevealed} candle(s) revelado(s) — sessão aberta até você encerrar
           </span>
         </div>
         <Button label="Voltar ao início" icon="pi pi-arrow-left" outlined onClick={onExit} />

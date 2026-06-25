@@ -33,13 +33,19 @@ export function JustificationPanel({ trade, onSubmit, busy }: Props) {
   const resultColor =
     trade.result === 'GAIN' ? 'success' : trade.result === 'LOSS' ? 'danger' : 'warning';
 
-  if (jaAvaliado && justification) {
-    const crit = justification.criteriosConfirmadosIA as {
-      fechamentoContrario: boolean;
-      rompimentoReferencia: boolean;
-      mediaMudouDirecao: boolean;
-    } | null;
+  const renderCriterio = (value: boolean | null | undefined) => {
+    if (value == null) {
+      return <strong style={{ color: '#6b7280' }}>Não avaliado</strong>;
+    }
+    return (
+      <strong className={value ? 'criterio-tag-ok' : 'criterio-tag-fail'}>
+        {value ? 'Sim' : 'Não'}
+      </strong>
+    );
+  };
 
+  if (jaAvaliado && justification) {
+    const crit = justification.criteriosConfirmadosIA;
     return (
       <>
         <Card title="Avaliação da entrada" className="justification-panel">
@@ -64,22 +70,13 @@ export function JustificationPanel({ trade, onSubmit, busy }: Props) {
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
               <span>
-                Fechamento contrário confirmado:{' '}
-                <strong className={crit?.fechamentoContrario ? 'criterio-tag-ok' : 'criterio-tag-fail'}>
-                  {crit?.fechamentoContrario ? 'Sim' : 'Não'}
-                </strong>
+                Fechamento contrário confirmado: {renderCriterio(crit?.fechamentoContrario)}
               </span>
               <span>
-                Rompimento de referência confirmado:{' '}
-                <strong className={crit?.rompimentoReferencia ? 'criterio-tag-ok' : 'criterio-tag-fail'}>
-                  {crit?.rompimentoReferencia ? 'Sim' : 'Não'}
-                </strong>
+                Rompimento de referência confirmado: {renderCriterio(crit?.rompimentoReferencia)}
               </span>
               <span>
-                Média mudou de direção confirmado:{' '}
-                <strong className={crit?.mediaMudouDirecao ? 'criterio-tag-ok' : 'criterio-tag-fail'}>
-                  {crit?.mediaMudouDirecao ? 'Sim' : 'Não'}
-                </strong>
+                Média mudou de direção confirmado: {renderCriterio(crit?.mediaMudouDirecao)}
               </span>
               <span>
                 Gestão de risco respeitada:{' '}
@@ -124,15 +121,21 @@ export function JustificationPanel({ trade, onSubmit, busy }: Props) {
         </div>
 
         <p style={{ color: '#9ca3af', marginBottom: '1rem' }}>
-          Marque quais dos 3 critérios de reversão você considera que bateram antes de entrar:
+          Marque quais dos 3 critérios você considera que bateram antes de entrar:
         </p>
 
         <div className="criterio-checkbox-row">
-          <Checkbox checked={fechamentoContrario} onChange={(e) => setFechamentoContrario(!!e.checked)} />
+          <Checkbox
+            checked={fechamentoContrario}
+            onChange={(e) => setFechamentoContrario(!!e.checked)}
+          />
           <label>O candle fechou no sentido contrário ao movimento anterior</label>
         </div>
         <div className="criterio-checkbox-row">
-          <Checkbox checked={rompimentoReferencia} onChange={(e) => setRompimentoReferencia(!!e.checked)} />
+          <Checkbox
+            checked={rompimentoReferencia}
+            onChange={(e) => setRompimentoReferencia(!!e.checked)}
+          />
           <label>O preço rompeu o último fundo/topo de referência</label>
         </div>
         <div className="criterio-checkbox-row">
