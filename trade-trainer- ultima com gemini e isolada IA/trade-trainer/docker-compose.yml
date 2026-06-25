@@ -1,0 +1,27 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: trade-trainer-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: trader
+      POSTGRES_PASSWORD: trader123
+      POSTGRES_DB: trade_trainer
+    ports:
+      - '5440:5432'
+    volumes:
+      - trade_trainer_pgdata:/var/lib/postgresql/data
+
+  adminer:
+    image: adminer:latest
+    container_name: trade-trainer-adminer
+    restart: unless-stopped
+    ports:
+      - '8090:8080'
+    depends_on:
+      - postgres
+
+volumes:
+  trade_trainer_pgdata:
