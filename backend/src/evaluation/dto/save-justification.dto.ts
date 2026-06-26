@@ -1,22 +1,20 @@
-import { IsBoolean, IsOptional, IsString, IsUUID } from 'class-validator';
+import { IsObject, IsOptional, IsString, IsUUID } from 'class-validator';
 
 /**
  * DTO para salvar a justificativa de um trade SEM chamar a IA.
  * A avaliação por IA é disparada depois, separadamente, via
- * POST /justifications/:tradeId/evaluate-ai (ver JustificationsController).
+ * POST /evaluation/:tradeId/run-ai-evaluation.
+ *
+ * criteriosMarcados e dinamico: as chaves dependem da estrategia vinculada
+ * ao trade (ver common/criteria-catalog.ts e GET /evaluation/criteria/:tradeId).
+ * Formato: { [chaveCriterio]: boolean }, ex: { "fechamento_contrario": true }
  */
 export class SaveJustificationDto {
   @IsUUID()
   tradeId: string;
 
-  @IsBoolean()
-  criterioFechamentoContrario: boolean;
-
-  @IsBoolean()
-  criterioRompimentoReferencia: boolean;
-
-  @IsBoolean()
-  criterioMediaMudouDirecao: boolean;
+  @IsObject()
+  criteriosMarcados: Record<string, boolean>;
 
   @IsOptional()
   @IsString()

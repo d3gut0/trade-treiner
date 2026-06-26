@@ -160,10 +160,11 @@ model TradeJustification {
   tradeId String         @unique
   trade   SimulatedTrade @relation(fields: [tradeId], references: [id])
 
-  // criterios marcados pelo usuario (checkboxes)
-  criterioFechamentoContrario Boolean @default(false)
-  criterioRompimentoReferencia Boolean @default(false)
-  criterioMediaMudouDirecao   Boolean @default(false)
+  // criterios marcados pelo usuario (checkboxes), dinamico de acordo com a
+  // estrategia vinculada ao trade. Formato: { [chaveCriterio]: boolean }
+  // ex: { "fechamento_contrario": true, "media_mudou_direcao": false }
+  // As chaves possiveis vem do catalogo central (common/criteria-catalog.ts)
+  criteriosMarcados Json @default("{}")
 
   textoLivre String?
 
@@ -175,7 +176,10 @@ model TradeJustification {
 
   // resposta da IA (Google Gemini)
   avaliacaoIA       String? // texto do veredito
-  criteriosConfirmadosIA Json? // { fechamentoContrario: bool|null, rompimentoReferencia: bool|null, mediaMudouDirecao: bool|null }
+  // criterios confirmados pela IA, mesmas chaves dinamicas de criteriosMarcados.
+  // Formato: { [chaveCriterio]: boolean|null } - null significa "usuario nao
+  // alegou esse criterio, nao avaliado"
+  criteriosConfirmadosIA Json?
   gestaoRespeitada  Boolean? // se o stop nao foi alterado / segue a regra
   scoreIA           Int?    // 0-100, opcional
   avaliadoEm        DateTime? // quando a IA respondeu com sucesso pela ultima vez

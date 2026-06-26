@@ -100,9 +100,7 @@ export function TrainingScreen({ sessionId, initialView, onExit }: Props) {
   const handleSaveJustification = async (
     tradeId: string,
     params: {
-      criterioFechamentoContrario: boolean;
-      criterioRompimentoReferencia: boolean;
-      criterioMediaMudouDirecao: boolean;
+      criteriosMarcados: Record<string, boolean>;
       textoLivre?: string;
     },
   ) => {

@@ -10,6 +10,8 @@ import { Divider } from 'primereact/divider';
 import { fetchCandles, listAssets, createSession } from '../api';
 import type { Asset, SessionView, Timeframe } from '../types';
 
+type Mercado = 'B3' | 'CRIPTO';
+
 interface Props {
   onSessionCreated: (view: SessionView) => void;
 }
@@ -19,6 +21,7 @@ export function SessionSetup({ onSessionCreated }: Props) {
   const [assetId, setAssetId] = useState<string | null>(null);
   const [timeframe, setTimeframe] = useState<Timeframe>('M1');
 
+  const [newMercado, setNewMercado] = useState<Mercado>('B3');
   const [newTicker, setNewTicker] = useState('');
   const [newTimeframe, setNewTimeframe] = useState<Timeframe>('M1');
   const [newDays, setNewDays] = useState(5);
@@ -49,12 +52,16 @@ export function SessionSetup({ onSessionCreated }: Props) {
     setError(null);
     setInfo(null);
     if (!newTicker.trim()) {
-      setError('Informe um ticker (ex: PETR4, VALE3).');
+      setError(
+        newMercado === 'CRIPTO'
+          ? 'Informe um ticker (ex: BTC, ETH).'
+          : 'Informe um ticker (ex: PETR4, VALE3).',
+      );
       return;
     }
     setFetchingCandles(true);
     try {
-      const result = await fetchCandles(newTicker.trim(), newTimeframe, newDays);
+      const result = await fetchCandles(newTicker.trim(), newTimeframe, newDays, newMercado);
       setInfo(`${result.candlesGravados} candles baixados para ${result.asset.ticker}.`);
       setNewTicker('');
       await loadAssets();
@@ -86,10 +93,24 @@ export function SessionSetup({ onSessionCreated }: Props) {
     <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem', maxWidth: 640 }}>
       <Card title="1. Baixar histórico real (se ainda não tiver)">
         <p style={{ color: '#9ca3af' }}>
-          Os candles vêm de dados reais via Yahoo Finance (ações B3). Não precisa adicionar
-          ".SA" no ticker.
+          Os candles vêm de dados reais via Yahoo Finance (ações B3 ou cripto). Não precisa
+          adicionar ".SA" ou "-USD" no ticker - o backend resolve de acordo com o mercado
+          selecionado.
         </p>
         <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', alignItems: 'flex-end' }}>
+          <div>
+            <label style={{ display: 'block', marginBottom: '0.4rem', color: '#9ca3af' }}>
+              Mercado
+            </label>
+            <SelectButton
+              value={newMercado}
+              onChange={(e) => e.value && setNewMercado(e.value)}
+              options={[
+                { label: 'B3', value: 'B3' },
+                { label: 'Cripto', value: 'CRIPTO' },
+              ]}
+            />
+          </div>
           <div>
             <label style={{ display: 'block', marginBottom: '0.4rem', color: '#9ca3af' }}>
               Ticker
@@ -97,7 +118,7 @@ export function SessionSetup({ onSessionCreated }: Props) {
             <InputText
               value={newTicker}
               onChange={(e) => setNewTicker(e.target.value)}
-              placeholder="PETR4"
+              placeholder={newMercado === 'CRIPTO' ? 'BTC' : 'PETR4'}
             />
           </div>
           <div>
@@ -110,6 +131,7 @@ export function SessionSetup({ onSessionCreated }: Props) {
               options={[
                 { label: '1 min', value: 'M1' },
                 { label: '2 min', value: 'M2' },
+                { label: '5 min', value: 'M5' },
               ]}
             />
           </div>
@@ -157,6 +179,7 @@ export function SessionSetup({ onSessionCreated }: Props) {
               options={[
                 { label: '1 min', value: 'M1' },
                 { label: '2 min', value: 'M2' },
+                { label: '5 min', value: 'M5' },
               ]}
             />
           </div>

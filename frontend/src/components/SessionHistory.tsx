@@ -29,18 +29,12 @@ interface SessionWithTrades {
     strategy: { nome: string } | null;
     coachingTip: CoachingTip | null;
     justification: {
-      criterioFechamentoContrario: boolean;
-      criterioRompimentoReferencia: boolean;
-      criterioMediaMudouDirecao: boolean;
+      criteriosMarcados: Record<string, boolean>;
       textoLivre: string | null;
       avaliacaoStatus: AvaliacaoIAStatus;
       avaliacaoErro: string | null;
       avaliacaoIA: string | null;
-      criteriosConfirmadosIA: {
-        fechamentoContrario: boolean | null;
-        rompimentoReferencia: boolean | null;
-        mediaMudouDirecao: boolean | null;
-      } | null;
+      criteriosConfirmadosIA: Record<string, boolean | null> | null;
       gestaoRespeitada: boolean | null;
       scoreIA: number | null;
     } | null;
@@ -56,6 +50,13 @@ function renderCriterioHistorico(value: boolean | null | undefined) {
       {value ? 'Sim' : 'Não'}
     </strong>
   );
+}
+
+// Quando exibimos um criterio no historico, ja nao temos mais o catalogo de
+// definicoes (label em portugues) carregado - so a chave tecnica salva no
+// banco. Convertemos a chave (snake_case) em algo legivel.
+function chaveParaLabel(chave: string): string {
+  return chave.charAt(0).toUpperCase() + chave.slice(1).replace(/_/g, ' ');
 }
 
 export function SessionHistory() {
@@ -251,15 +252,11 @@ export function SessionHistory() {
                                   fontSize: '0.9rem',
                                 }}
                               >
-                                <span>
-                                  Fechamento contrário: {renderCriterioHistorico(crit.fechamentoContrario)}
-                                </span>
-                                <span>
-                                  Rompimento de referência: {renderCriterioHistorico(crit.rompimentoReferencia)}
-                                </span>
-                                <span>
-                                  Média mudou de direção: {renderCriterioHistorico(crit.mediaMudouDirecao)}
-                                </span>
+                                {Object.entries(crit).map(([chave, valor]) => (
+                                  <span key={chave}>
+                                    {chaveParaLabel(chave)}: {renderCriterioHistorico(valor)}
+                                  </span>
+                                ))}
                                 <span>
                                   Gestão respeitada: {renderCriterioHistorico(j.gestaoRespeitada)}
                                 </span>

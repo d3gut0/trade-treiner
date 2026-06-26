@@ -296,17 +296,25 @@ adicionados no futuro (ex: MACD), gráficos antigos passam a mostrá-los também
   re-renderizar o gráfico exatamente como estava na hora da decisão.
 - `POST /trades/:id/close` — fecha manualmente no preço atual.
 
-### Evaluation (fluxo desacoplado em 2 passos)
+### Evaluation (fluxo desacoplado em 2 passos + critérios dinâmicos)
+- `GET /evaluation/criteria/:tradeId` — resolve e devolve a lista de critérios aplicáveis a
+  um trade específico, de acordo com a estratégia vinculada (ou o fallback genérico de 3
+  critérios de reversão, se não houver estratégia). Chamado pelo frontend ANTES de montar o
+  formulário de justificativa.
 - `POST /evaluation/justification` — **(passo 1)** salva a justificativa do usuário
-  (critérios marcados + texto livre) **sem chamar a IA**. Trade fica com
-  `avaliacaoStatus = PENDENTE`.
+  (`criteriosMarcados`: JSON dinâmico `{ [chave]: boolean }` + texto livre) **sem chamar a
+  IA**. Trade fica com `avaliacaoStatus = PENDENTE`.
 - `POST /evaluation/:tradeId/run-ai-evaluation` — **(passo 2)** busca a justificativa já
-  salva, monta payload numérico (candles OHLC + indicadores ao redor da entrada +
-  estratégia vinculada), chama o Gemini avaliando **somente os critérios marcados pelo
-  usuário**, atualiza a `TradeJustification` com o veredito. Pode ser chamado a qualquer
+  salva, resolve os critérios aplicáveis à estratégia do trade, monta payload numérico
+  (candles OHLC + indicadores ao redor da entrada + estratégia vinculada), chama o Gemini
+  avaliando **somente os critérios marcados pelo usuário** (usando as chaves técnicas
+  dinâmicas), atualiza a `TradeJustification` com o veredito. Pode ser chamado a qualquer
   momento depois do passo 1 — na hora ou revisitando o histórico depois.
 - `GET /evaluation/pending` — lista justificativas com `avaliacaoStatus` `PENDENTE` ou
   `ERRO`, útil pra uma fila de avaliação.
+- `POST /evaluation/:tradeId/coaching-tip` — gera (ou regenera) uma dica de coaching sobre
+  timing de entrada/saída para um trade específico, independente do fluxo de justificativa.
+  Ver seção 8 para os detalhes do prompt.
 - `GET /evaluation/test-gemini` — health check da integração com o Gemini, sem tocar no
   banco.
 
@@ -339,7 +347,8 @@ trade-trainer/
 │       ├── app.module.ts
 │       ├── seed.ts            (cria 3 estratégias de exemplo)
 │       ├── common/
-│       │   └── indicators.ts  (calculateEMA, calculateVWAP)
+│       │   ├── indicators.ts        (calculateEMA, calculateVWAP)
+│       │   └── criteria-catalog.ts  (catálogo central de critérios + resolução dinâmica)
 │       ├── prisma/            (PrismaService + PrismaModule global)
 │       ├── candles/           (controller, service, module, dto)
 │       ├── sessions/          (com forwardRef pra trades)
@@ -416,19 +425,80 @@ Esse foi um bug real identificado em uso: o prompt antigo sempre pedia os 3 crit
 preenchidos no JSON de resposta, então a IA julgava todos mesmo quando a entrada não era
 de reversão (ex: entrada por cruzamento de EMA9/21, que é lógica de continuação).
 
-**Correção aplicada:**
+**Correção aplicada (versão inicial, depois evoluída para totalmente dinâmica — ver próxima
+subseção):**
 - O backend monta uma lista com só os critérios que o usuário marcou como `true`, e manda
-  essa lista explicitamente no prompt como "criteriosQueOUsuarioMarcou".
+  essa lista explicitamente no prompt.
 - O system prompt instrui: avaliar **somente** os critérios dessa lista; para os demais,
   retornar `null` em vez de `true`/`false`. Se a estratégia vinculada for claramente
   não-reversão, não penalizar por "critérios de reversão não confirmados".
 - O parsing da resposta preserva `null` em vez de forçar conversão booleana (que
   converteria `null` incorretamente em `false`).
-- `criteriosConfirmadosIA` no schema (backend e frontend) agora aceita `boolean | null`
-  em cada campo, em vez de só `boolean`.
 - No frontend, os componentes de exibição têm uma função helper que mostra
   **"Não avaliado"** em cinza quando o valor é `null`, em vez de mostrar "Não" (que seria
   enganoso — pareceria reprovação de algo que nem foi alegado).
+
+### Critérios de confirmação totalmente dinâmicos por estratégia
+
+**Evolução importante:** os 3 critérios (fechamento contrário, rompimento de referência,
+EMA9 mudou de direção) eram **fixos no código** — 3 campos boolean hardcoded no schema, 3
+checkboxes hardcoded no frontend, 3 chaves hardcoded no prompt. Isso forçava qualquer
+estratégia a ser avaliada pela régua de reversão, mesmo quando a lógica era outra (cruzamento
+de médias, pullback de VWAP), o que já tinha sido parcialmente mitigado (seção acima) mas
+continuava estruturalmente errado: a tela sempre mostrava os mesmos 3 checkboxes,
+independente da estratégia vinculada ao trade.
+
+**Solução implementada — catálogo central + resolução dinâmica:**
+
+- **`backend/src/common/criteria-catalog.ts`** — registro central de critérios possíveis.
+  Cada entrada tem `chave` (técnica, snake_case), `label` (texto exibido no checkbox) e
+  `descricao` (usada no prompt da IA para explicar o critério). Adicionar um critério novo
+  é só adicionar uma entrada aqui — não precisa tocar em mais nenhum lugar do código.
+  Critérios hoje no catálogo: `fechamento_contrario`, `rompimento_referencia`,
+  `media_mudou_direcao` (os 3 originais de reversão), `cruzamento_confirmado` (cruzamento
+  EMA9/21 + fechamento de confirmação, numa chave só), `toque_vwap_com_rejeicao` (toque na
+  VWAP + rejeição a favor da tendência).
+- **`Strategy.criterios.confirmacao`** (já existia no schema, JSON livre) passou a ser a
+  fonte da verdade de quais critérios uma estratégia usa — é um array de chaves técnicas que
+  devem existir no catálogo. Ex: `{ confirmacao: ['cruzamento_confirmado'] }`.
+- **`resolveCriteriaForStrategy(strategyCriterios)`** — função que resolve as chaves de
+  `confirmacao` para as definições completas (label + descrição) do catálogo. Chaves
+  desconhecidas são ignoradas silenciosamente (não quebram se uma estratégia antiga
+  referenciar uma chave removida). Se a lista resultante ficar vazia ou a estratégia não
+  tiver `confirmacao` definido, cai no fallback genérico via `getDefaultCriteria()`.
+- **`getDefaultCriteria()`** — fallback usado quando o trade NÃO tem estratégia vinculada:
+  os 3 critérios completos de reversão (comportamento histórico do produto, preservado como
+  default).
+- **`GET /evaluation/criteria/:tradeId`** (endpoint novo) — resolve e devolve a lista de
+  critérios aplicáveis a um trade específico, considerando a estratégia vinculada. Chamado
+  pelo frontend ANTES de mostrar o formulário de justificativa, para montar os checkboxes
+  dinamicamente.
+- **`TradeJustification.criteriosMarcados`** — trocou de 3 campos boolean fixos
+  (`criterioFechamentoContrario` etc., REMOVIDOS) para um único campo `Json` no formato
+  `{ [chaveCriterio]: boolean }`. Mesma mudança em `criteriosConfirmadosIA` (resposta da
+  IA), que também é `Json` dinâmico em vez de 3 campos fixos.
+- **Prompt da IA (`callGemini`)** — agora recebe `criteriaDefinitions` (resolvido a partir
+  da estratégia do trade) e monta a descrição de cada critério aplicável dinamicamente no
+  system prompt, em vez de descrever sempre os mesmos 3 critérios de reversão. A IA é
+  instruída a usar as mesmas chaves técnicas exatas (não traduzir, não inventar chaves) na
+  resposta.
+- **Frontend `JustificationPanel.tsx`** — busca os critérios via
+  `GET /evaluation/criteria/:tradeId` ao montar (só quando o trade ainda não foi
+  justificado), e renderiza um checkbox por critério retornado, com o label do catálogo.
+  Quando já avaliado, itera dinamicamente sobre as chaves presentes em
+  `criteriosConfirmadosIA` (não mais 3 chaves fixas).
+- **Frontend `SessionHistory.tsx`** — mesma lógica de iteração dinâmica sobre
+  `criteriosConfirmadosIA`; como o catálogo de definições não está carregado no histórico,
+  usa uma função simples (`chaveParaLabel`) que converte a chave técnica snake_case em texto
+  capitalizado legível, como fallback visual.
+
+**Migration necessária:** essa mudança alterou o schema (campos removidos e adicionados em
+`TradeJustification`), então requer `npx prisma migrate dev --name <nome>` — não é só
+aditiva como as migrations anteriores, **remove** colunas antigas
+(`criterioFechamentoContrario`, `criterioRompimentoReferencia`, `criterioMediaMudouDirecao`).
+Justificativas antigas salvas antes dessa mudança perdem essas colunas; se precisar
+preservar dados históricos antes de migrar, fazer backup manual da tabela
+`trade_justifications` antes de rodar a migration.
 
 ### Revisualização de gráfico (sem print)
 
@@ -442,6 +512,7 @@ histórico.
 ---
 
 ## 9. Como rodar (passo a passo)
+
 
 ### 1. Banco
 ```
@@ -561,6 +632,13 @@ npm run dev   # http://localhost:5490
   perde a justificativa que o usuário escreveu, e força avaliar no calor do momento sem
   opção de adiar. Fix: separar em dois endpoints/passos independentes (ver seção 8,
   "Avaliação por IA é desacoplada da justificativa").
+- Ter os 3 critérios de confirmação hardcoded (3 campos boolean fixos no schema, 3
+  checkboxes fixos no frontend, 3 chaves fixas no prompt) → toda estratégia era avaliada
+  pela régua de reversão, mesmo quando a lógica era outra (cruzamento, pullback). Fix:
+  catálogo central de critérios (`criteria-catalog.ts`) + resolução dinâmica a partir de
+  `Strategy.criterios.confirmacao` + `criteriosMarcados` como JSON dinâmico em vez de
+  campos fixos (ver seção 8, "Critérios de confirmação totalmente dinâmicos por
+  estratégia").
 
 ---
 
@@ -591,7 +669,7 @@ DIY de eletrônica/robótica, fabricação de cockpit de sim racing.
 
 ---
 
-*Última atualização: documento revisado após a migração do provedor de IA de Groq para
-Google Gemini (instabilidade de rede com Groq), e a separação do fluxo de avaliação em 2
-passos independentes (salvar justificativa imediatamente, avaliar com IA quando quiser —
-na hora ou revisitando o histórico depois).*
+*Última atualização: documento revisado após a feature de dica de coaching sobre timing
+(entrada/saída, independente da justificativa) e a evolução dos critérios de confirmação
+para totalmente dinâmicos por estratégia (catálogo central + resolução automática, em vez
+de 3 critérios fixos hardcoded).*

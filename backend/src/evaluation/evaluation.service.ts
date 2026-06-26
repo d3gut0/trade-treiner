@@ -3,17 +3,17 @@ import { ConfigService } from '@nestjs/config';
 import { GoogleGenAI } from '@google/genai';
 import { PrismaService } from '../prisma/prisma.service';
 import { SaveJustificationDto } from './dto/save-justification.dto';
+import {
+  CRITERIA_CATALOG,
+  CriterioDefinicao,
+  resolveCriteriaForStrategy,
+  getDefaultCriteria,
+} from '../common/criteria-catalog';
 
 // Quantos candles ANTES da entrada mandamos pra IA como contexto.
 // Numero pequeno o suficiente pra manter o payload (e o custo) baixo,
 // mas suficiente pra IA avaliar estrutura de movimento.
 const CONTEXT_CANDLES_BEFORE_ENTRY = 12;
-
-interface CriteriosConfirmadosIA {
-  fechamentoContrario: boolean | null;
-  rompimentoReferencia: boolean | null;
-  mediaMudouDirecao: boolean | null;
-}
 
 @Injectable()
 export class EvaluationService {
@@ -30,11 +30,39 @@ export class EvaluationService {
   }
 
   /**
+   * Resolve a lista de criterios aplicaveis para a justificativa de um
+   * trade, de acordo com a estrategia vinculada a ele. Usado pelo frontend
+   * para montar os checkboxes dinamicamente, ANTES de salvar a justificativa.
+   *
+   * Se o trade nao tiver estrategia vinculada (ou a estrategia nao definir
+   * criterios.confirmacao), cai no fallback generico (os 3 criterios
+   * completos de reversao).
+   */
+  async getCriteriaForTrade(tradeId: string): Promise<CriterioDefinicao[]> {
+    const trade = await this.prisma.simulatedTrade.findUnique({
+      where: { id: tradeId },
+      include: { strategy: true },
+    });
+    if (!trade) throw new NotFoundException('Entrada não encontrada.');
+
+    if (!trade.strategy) {
+      return getDefaultCriteria();
+    }
+
+    return resolveCriteriaForStrategy(trade.strategy.criterios);
+  }
+
+  /**
    * PASSO 1 do fluxo desacoplado: salva a justificativa do usuario
    * (criterios marcados + texto livre) SEM chamar a IA. O registro fica
    * com avaliacaoStatus = PENDENTE. A avaliacao por IA e disparada depois,
    * manualmente, via runAiEvaluation() - por exemplo quando o usuario
    * revisita o historico e decide avaliar aquele trade especifico.
+   *
+   * criteriosMarcados e dinamico - as chaves devem corresponder as
+   * retornadas por getCriteriaForTrade() para este trade. Chaves que nao
+   * existem no catalogo central sao ignoradas (nao quebram o salvamento,
+   * mas tambem nao sao usadas na avaliacao por IA).
    */
   async saveJustification(dto: SaveJustificationDto) {
     const trade = await this.prisma.simulatedTrade.findUnique({
@@ -51,17 +79,13 @@ export class EvaluationService {
       where: { tradeId: dto.tradeId },
       create: {
         tradeId: dto.tradeId,
-        criterioFechamentoContrario: dto.criterioFechamentoContrario,
-        criterioRompimentoReferencia: dto.criterioRompimentoReferencia,
-        criterioMediaMudouDirecao: dto.criterioMediaMudouDirecao,
+        criteriosMarcados: dto.criteriosMarcados as any,
         textoLivre: dto.textoLivre,
         avaliacaoStatus: 'PENDENTE',
       },
       update: {
         // permite o usuario editar a justificativa antes de avaliar
-        criterioFechamentoContrario: dto.criterioFechamentoContrario,
-        criterioRompimentoReferencia: dto.criterioRompimentoReferencia,
-        criterioMediaMudouDirecao: dto.criterioMediaMudouDirecao,
+        criteriosMarcados: dto.criteriosMarcados as any,
         textoLivre: dto.textoLivre,
         // se o usuario editar uma justificativa que ja tinha sido avaliada,
         // os campos antigos de avaliacao da IA ficam mantidos ate ele decidir
@@ -110,6 +134,12 @@ export class EvaluationService {
 
     const payload = this.buildNumericPayload(trade, candles);
 
+    // resolve quais criterios sao aplicaveis a este trade (mesma logica de
+    // getCriteriaForTrade), para o prompt saber os labels e validar as chaves
+    const criteriaDefinitions = trade.strategy
+      ? resolveCriteriaForStrategy(trade.strategy.criterios)
+      : getDefaultCriteria();
+
     if (!this.ai) {
       return this.prisma.tradeJustification.update({
         where: { tradeId },
@@ -121,7 +151,7 @@ export class EvaluationService {
     }
 
     try {
-      const aiResult = await this.callGemini(payload, justification);
+      const aiResult = await this.callGemini(payload, justification, criteriaDefinitions);
 
       return this.prisma.tradeJustification.update({
         where: { tradeId },
@@ -284,19 +314,37 @@ export class EvaluationService {
     };
   }
 
+  /**
+   * Avaliacao por criterios dinamicos: o prompt monta a lista de criterios
+   * APLICAVEIS a este trade (resolvidos a partir da estrategia vinculada,
+   * vindo de criteriaDefinitions), descreve cada um (label + descricao do
+   * catalogo central), e avalia SOMENTE os que o usuario marcou como true em
+   * justification.criteriosMarcados. Criterios nao marcados retornam null
+   * ("nao avaliado"), nunca false por omissao.
+   */
   private async callGemini(
     payload: ReturnType<EvaluationService['buildNumericPayload']>,
-    justification: { criterioFechamentoContrario: boolean; criterioRompimentoReferencia: boolean; criterioMediaMudouDirecao: boolean; textoLivre: string | null },
+    justification: { criteriosMarcados: unknown; textoLivre: string | null },
+    criteriaDefinitions: CriterioDefinicao[],
   ): Promise<{
     avaliacaoIA: string;
-    criteriosConfirmadosIA: CriteriosConfirmadosIA;
+    criteriosConfirmadosIA: Record<string, boolean | null>;
     gestaoRespeitada: boolean;
     scoreIA: number;
   }> {
-    const criteriosMarcados: string[] = [];
-    if (justification.criterioFechamentoContrario) criteriosMarcados.push('fechamentoContrario');
-    if (justification.criterioRompimentoReferencia) criteriosMarcados.push('rompimentoReferencia');
-    if (justification.criterioMediaMudouDirecao) criteriosMarcados.push('mediaMudouDirecao');
+    const marcadosRaw = (justification.criteriosMarcados as Record<string, boolean>) ?? {};
+
+    // filtra para considerar apenas chaves que SAO aplicaveis a esta
+    // estrategia (evita que uma chave de uma estrategia antiga "vaze" para
+    // uma avaliacao de estrategia diferente)
+    const chavesAplicaveis = new Set(criteriaDefinitions.map((c) => c.chave));
+    const criteriosMarcadosChaves = Object.entries(marcadosRaw)
+      .filter(([chave, marcado]) => marcado === true && chavesAplicaveis.has(chave))
+      .map(([chave]) => chave);
+
+    const catalogoDescricao = criteriaDefinitions
+      .map((c) => `- ${c.chave}: ${c.label}. ${c.descricao}`)
+      .join('\n');
 
     const systemPrompt = `Você é um mentor objetivo de day trade, especializado em revisar disciplina de entrada e saída.
 Você recebe dados NUMÉRICOS de candles (OHLC) e indicadores (EMA9, EMA21, VWAP), o trade que o usuário simulou,
@@ -304,27 +352,24 @@ a estratégia que ele vinculou (se houver) e a justificativa que ele deu. NÃO i
 com base nos números fornecidos.
 
 IMPORTANTE - REGRA DE ESCOPO DA AVALIAÇÃO:
-O usuário tem 3 critérios pessoais de confirmação que ele usa especificamente para decidir ENTRADAS DE REVERSÃO
-(operar contra o movimento anterior, apostando que ele está virando). Esses critérios NÃO são um checklist
-universal obrigatório para toda e qualquer entrada - eles só fazem sentido quando o usuário está de fato tentando
-uma reversão.
+Os critérios de confirmação são específicos da estratégia que o usuário vinculou ao trade - eles NÃO são um
+checklist universal obrigatório para toda e qualquer entrada. Os critérios aplicáveis a ESTE trade específico,
+de acordo com a estratégia vinculada (ou o padrão genérico se não houver estratégia), são:
 
-Os 3 critérios são:
-1. fechamentoContrario: o candle de entrada (ou o candle imediatamente anterior) fechou no sentido contrário ao
-   movimento prévio, não apenas pavio.
-2. rompimentoReferencia: o preço rompeu o último fundo/topo de referência visível na janela de candles fornecida.
-3. mediaMudouDirecao: a EMA9 mudou de inclinação (não apenas desacelerou) na direção da nova entrada.
+${catalogoDescricao}
 
 REGRAS PARA SUA AVALIAÇÃO:
-- Avalie SOMENTE os critérios que aparecem na lista "criteriosQueOUsuarioMarcou" do prompt do usuário. Para
-  qualquer critério que NÃO esteja nessa lista, retorne null nesse campo de "criteriosConfirmadosIA" - não invente
+- Avalie SOMENTE os critérios que aparecem na lista "criteriosQueOUsuarioMarcou" do prompt do usuário (usando a
+  chave técnica exata). Para qualquer critério da lista de critérios aplicáveis acima que NÃO esteja em
+  "criteriosQueOUsuarioMarcou", retorne null no campo correspondente de "criteriosConfirmadosIA" - não invente
   uma avaliação para um critério que o usuário nem alegou ter seguido.
-- Se a lista de critérios marcados estiver vazia, ou se a estratégia vinculada (campo "estrategiaVinculada") for
-  claramente uma lógica diferente de reversão (ex: "Cruzamento EMA9/EMA21", "Pullback à VWAP", continuação de
-  tendência), NÃO penalize a entrada por "não confirmar os 3 critérios de reversão" - esse julgamento só se aplica
-  quando o próprio usuário está tentando uma reversão. Avalie a entrada pela lógica que ele de fato usou.
-- O comentário em "avaliacaoIA" deve mencionar apenas os critérios relevantes ao que o usuário realmente alegou
-  (critérios marcados e/ou estratégia vinculada), nunca cobrar critérios que ele não disse estar usando.
+- Se a lista de critérios marcados estiver vazia, não penalize a entrada por "não confirmar os critérios" -
+  avalie a entrada apenas pela estratégia vinculada e pela justificativa em texto livre, de forma factual.
+- O comentário em "avaliacaoIA" deve mencionar apenas os critérios relevantes ao que o usuário realmente alegou,
+  nunca cobrar critérios que ele não disse estar usando.
+- Use EXATAMENTE as mesmas chaves técnicas (ex: "fechamento_contrario", "cruzamento_confirmado") no objeto
+  "criteriosConfirmadosIA" da sua resposta - não traduza, não invente chaves novas, não use os labels em
+  português como chave.
 
 Também avalie gestaoRespeitada: true se o resultado é coerente com stopGain/stopLoss definidos (ou seja, o usuário
 não teria motivo aparente para ter alterado o stop no meio - isso é mais sobre se a estrutura do trade é coerente,
@@ -332,8 +377,8 @@ já que o stop é travado no sistema e não pode ser alterado).
 
 Responda SOMENTE em JSON válido, sem markdown, sem texto fora do JSON, no formato exato:
 {
-  "avaliacaoIA": "string em português, 2 a 4 frases, comentário objetivo sobre os critérios que o usuário realmente alegou seguir (marcados e/ou pela estratégia vinculada) - nunca cobre critérios não alegados",
-  "criteriosConfirmadosIA": { "fechamentoContrario": boolean ou null, "rompimentoReferencia": boolean ou null, "mediaMudouDirecao": boolean ou null },
+  "avaliacaoIA": "string em português, 2 a 4 frases, comentário objetivo sobre os critérios que o usuário realmente alegou seguir - nunca cobre critérios não alegados",
+  "criteriosConfirmadosIA": { "<chave_tecnica>": boolean ou null, ... } (uma entrada para cada critério aplicável listado acima, usando a chave técnica exata),
   "gestaoRespeitada": boolean,
   "scoreIA": number de 0 a 100 representando qualidade geral da decisão, considerando apenas o que o usuário alegou seguir
 }`;
@@ -341,8 +386,9 @@ Responda SOMENTE em JSON válido, sem markdown, sem texto fora do JSON, no forma
     const userPrompt = `DADOS DO TRADE:
 ${JSON.stringify(payload, null, 2)}
 
-criteriosQueOUsuarioMarcou: ${JSON.stringify(criteriosMarcados)}
-(esta é a lista de critérios que o usuário alega ter seguido - avalie SOMENTE estes; retorne null para os demais)
+criteriosQueOUsuarioMarcou: ${JSON.stringify(criteriosMarcadosChaves)}
+(esta é a lista de CHAVES TÉCNICAS que o usuário alega ter seguido - avalie SOMENTE estas; retorne null para as
+demais chaves aplicáveis listadas no system prompt)
 
 estrategiaVinculada: ${payload.estrategiaVinculada ?? '(nenhuma)'}
 
@@ -367,13 +413,16 @@ e dê seu veredito. Não avalie critérios fora dessa lista.`;
     const normalizeCriterio = (value: unknown): boolean | null =>
       value === true || value === false ? value : null;
 
+    const criteriosConfirmadosIA: Record<string, boolean | null> = {};
+    for (const def of criteriaDefinitions) {
+      criteriosConfirmadosIA[def.chave] = normalizeCriterio(
+        parsed.criteriosConfirmadosIA?.[def.chave],
+      );
+    }
+
     return {
       avaliacaoIA: parsed.avaliacaoIA ?? 'IA não retornou comentário.',
-      criteriosConfirmadosIA: {
-        fechamentoContrario: normalizeCriterio(parsed.criteriosConfirmadosIA?.fechamentoContrario),
-        rompimentoReferencia: normalizeCriterio(parsed.criteriosConfirmadosIA?.rompimentoReferencia),
-        mediaMudouDirecao: normalizeCriterio(parsed.criteriosConfirmadosIA?.mediaMudouDirecao),
-      },
+      criteriosConfirmadosIA,
       gestaoRespeitada: !!parsed.gestaoRespeitada,
       scoreIA: typeof parsed.scoreIA === 'number' ? parsed.scoreIA : 50,
     };

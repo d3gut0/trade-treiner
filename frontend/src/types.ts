@@ -79,21 +79,21 @@ export interface TrainingSession {
   finishedAt: string | null;
 }
 
+export interface CriterioDefinicao {
+  chave: string;
+  label: string;
+  descricao: string;
+}
+
 export interface TradeJustification {
   id: string;
   tradeId: string;
-  criterioFechamentoContrario: boolean;
-  criterioRompimentoReferencia: boolean;
-  criterioMediaMudouDirecao: boolean;
+  criteriosMarcados: Record<string, boolean>;
   textoLivre: string | null;
   avaliacaoStatus: AvaliacaoIAStatus;
   avaliacaoErro: string | null;
   avaliacaoIA: string | null;
-  criteriosConfirmadosIA: {
-    fechamentoContrario: boolean | null;
-    rompimentoReferencia: boolean | null;
-    mediaMudouDirecao: boolean | null;
-  } | null;
+  criteriosConfirmadosIA: Record<string, boolean | null> | null;
   gestaoRespeitada: boolean | null;
   scoreIA: number | null;
   avaliadoEm: string | null;

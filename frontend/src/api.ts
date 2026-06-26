@@ -3,6 +3,7 @@ import type {
   Asset,
   Candle,
   CoachingTip,
+  CriterioDefinicao,
   SessionView,
   SimulatedTrade,
   Strategy,
@@ -15,11 +16,15 @@ const API_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:3500';
 export const api = axios.create({ baseURL: API_URL });
 
 // ---------- Candles ----------
-export async function fetchCandles(ticker: string, timeframe: Timeframe, days: number) {
-  const { data } = await api.post('/candles/fetch', { ticker, timeframe, days });
+export async function fetchCandles(
+  ticker: string,
+  timeframe: Timeframe,
+  days: number,
+  mercado: 'B3' | 'CRIPTO' = 'B3',
+) {
+  const { data } = await api.post('/candles/fetch', { ticker, timeframe, days, mercado });
   return data;
 }
-
 export async function listAssets(): Promise<Asset[]> {
   const { data } = await api.get('/candles/assets');
   return data;
@@ -81,12 +86,19 @@ export async function getTradeChartContext(tradeId: string): Promise<{
 
 // ---------- Evaluation (fluxo desacoplado) ----------
 
-// PASSO 1: salva a justificativa (criterios + texto) SEM chamar a IA.
+// Resolve quais criterios sao aplicaveis a um trade, de acordo com a
+// estrategia vinculada (ou o fallback generico se nao houver estrategia).
+// Chamado ANTES de mostrar o formulario de justificativa, para montar os
+// checkboxes dinamicamente.
+export async function getCriteriaForTrade(tradeId: string): Promise<CriterioDefinicao[]> {
+  const { data } = await api.get(`/evaluation/criteria/${tradeId}`);
+  return data;
+}
+
+// PASSO 1: salva a justificativa (criterios dinamicos + texto) SEM chamar a IA.
 export async function saveJustification(params: {
   tradeId: string;
-  criterioFechamentoContrario: boolean;
-  criterioRompimentoReferencia: boolean;
-  criterioMediaMudouDirecao: boolean;
+  criteriosMarcados: Record<string, boolean>;
   textoLivre?: string;
 }) {
   const { data } = await api.post('/evaluation/justification', params);

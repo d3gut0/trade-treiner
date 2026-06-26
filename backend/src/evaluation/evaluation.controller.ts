@@ -6,6 +6,15 @@ import { SaveJustificationDto } from './dto/save-justification.dto';
 export class EvaluationController {
   constructor(private readonly evaluationService: EvaluationService) {}
 
+  // Resolve quais criterios sao aplicaveis a este trade, de acordo com a
+  // estrategia vinculada (ou o fallback generico se nao houver estrategia).
+  // Usado pelo frontend para montar os checkboxes dinamicamente ANTES de
+  // salvar a justificativa.
+  @Get('criteria/:tradeId')
+  getCriteriaForTrade(@Param('tradeId') tradeId: string) {
+    return this.evaluationService.getCriteriaForTrade(tradeId);
+  }
+
   // PASSO 1: salva a justificativa (criterios + texto) SEM chamar a IA.
   // Substitui o antigo POST /evaluation que fazia tudo de uma vez.
   @Post('justification')
