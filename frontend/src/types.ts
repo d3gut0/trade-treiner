@@ -54,6 +54,7 @@ export interface Candle {
   ema9: number | null;
   ema21: number | null;
   vwap: number | null;
+  ifr2: number | null;
   sequenceIndex: number;
 }
 

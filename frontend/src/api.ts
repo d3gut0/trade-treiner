@@ -16,15 +16,11 @@ const API_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:3500';
 export const api = axios.create({ baseURL: API_URL });
 
 // ---------- Candles ----------
-export async function fetchCandles(
-  ticker: string,
-  timeframe: Timeframe,
-  days: number,
-  mercado: 'B3' | 'CRIPTO' = 'B3',
-) {
-  const { data } = await api.post('/candles/fetch', { ticker, timeframe, days, mercado });
+export async function fetchCandles(ticker: string, timeframe: Timeframe, days: number) {
+  const { data } = await api.post('/candles/fetch', { ticker, timeframe, days });
   return data;
 }
+
 export async function listAssets(): Promise<Asset[]> {
   const { data } = await api.get('/candles/assets');
   return data;

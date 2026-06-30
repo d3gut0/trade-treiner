@@ -60,7 +60,7 @@ model Asset {
 }
 
 // Candle historico real, baixado via yahoo-finance2.
-// Os indicadores (EMA9, EMA21, VWAP) sao pre-calculados e armazenados
+// Os indicadores (EMA9, EMA21, VWAP, IFR2) sao pre-calculados e armazenados
 // junto pra nao recalcular em toda requisicao de replay.
 model HistoricalCandle {
   id        String    @id @default(uuid())
@@ -77,6 +77,7 @@ model HistoricalCandle {
   ema9  Float?
   ema21 Float?
   vwap  Float?
+  ifr2  Float? // Indice de Forca Relativa periodo 2 (RSI(2)), 0-100
 
   // indice sequencial dentro do lote baixado (facilita o replay ordenado)
   sequenceIndex Int

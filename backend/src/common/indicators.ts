@@ -77,3 +77,67 @@ export function calculateVWAP(candles: CandleInput[]): (number | null)[] {
 
   return result;
 }
+
+/**
+ * IFR2 (Indice de Forca Relativa, periodo 2) - tambem conhecido como RSI(2).
+ * E o oscilador classico de Larry Connors para estrategias de sobrecompra/
+ * sobrevenda de curtissimo prazo (geralmente usado com limites de 10/90 em
+ * vez dos tradicionais 30/70 do RSI de periodo 14).
+ *
+ * Formula de Wilder (suavizacao exponencial dos ganhos/perdas medios):
+ * 1. delta = close[i] - close[i-1]
+ * 2. ganho = max(delta, 0), perda = max(-delta, 0)
+ * 3. primeira media de ganhos/perdas = SMA simples dos primeiros `period` deltas
+ * 4. medias seguintes = suavizacao de Wilder: media = (mediaAnterior * (period-1) + valorAtual) / period
+ * 5. RS = mediaGanhos / mediaPerdas
+ * 6. IFR = 100 - (100 / (1 + RS))
+ *
+ * Fixo para period=2 neste projeto (unico uso atual: estrategia IFR2 de
+ * sobrevenda estatistica). Retorna null nos indices sem dados suficientes
+ * (precisa de pelo menos period+1 closes para o primeiro valor).
+ */
+export function calculateIFR2(closes: number[]): (number | null)[] {
+  const period = 2;
+  const result: (number | null)[] = new Array(closes.length).fill(null);
+  if (closes.length < period + 1) return result;
+
+  const deltas: number[] = [];
+  for (let i = 1; i < closes.length; i++) {
+    deltas.push(closes[i] - closes[i - 1]);
+  }
+
+  // primeira media (SMA simples) dos primeiros `period` deltas
+  let avgGain = 0;
+  let avgLoss = 0;
+  for (let i = 0; i < period; i++) {
+    const delta = deltas[i];
+    avgGain += Math.max(delta, 0);
+    avgLoss += Math.max(-delta, 0);
+  }
+  avgGain /= period;
+  avgLoss /= period;
+
+  const computeIFR = (gain: number, loss: number): number => {
+    if (loss === 0) return gain === 0 ? 50 : 100; // sem perdas: IFR maximo (ou neutro se tambem sem ganhos)
+    const rs = gain / loss;
+    return 100 - 100 / (1 + rs);
+  };
+
+  // indice do closes[] correspondente ao primeiro IFR calculavel:
+  // deltas[period-1] é a transicao closes[period-1] -> closes[period],
+  // entao o primeiro IFR valido fica em closes[period]
+  result[period] = computeIFR(avgGain, avgLoss);
+
+  for (let i = period; i < deltas.length; i++) {
+    const delta = deltas[i];
+    const gain = Math.max(delta, 0);
+    const loss = Math.max(-delta, 0);
+
+    avgGain = (avgGain * (period - 1) + gain) / period;
+    avgLoss = (avgLoss * (period - 1) + loss) / period;
+
+    result[i + 1] = computeIFR(avgGain, avgLoss);
+  }
+
+  return result;
+}

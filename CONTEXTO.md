@@ -347,7 +347,7 @@ trade-trainer/
 │       ├── app.module.ts
 │       ├── seed.ts            (cria 3 estratégias de exemplo)
 │       ├── common/
-│       │   ├── indicators.ts        (calculateEMA, calculateVWAP)
+│       │   ├── indicators.ts        (calculateEMA, calculateVWAP, calculateIFR2)
 │       │   └── criteria-catalog.ts  (catálogo central de critérios + resolução dinâmica)
 │       ├── prisma/            (PrismaService + PrismaModule global)
 │       ├── candles/           (controller, service, module, dto)
@@ -499,6 +499,48 @@ aditiva como as migrations anteriores, **remove** colunas antigas
 Justificativas antigas salvas antes dessa mudança perdem essas colunas; se precisar
 preservar dados históricos antes de migrar, fazer backup manual da tabela
 `trade_justifications` antes de rodar a migration.
+
+### Indicador IFR2 (RSI período 2) para estratégias de sobrevenda estatística
+
+**Motivação:** usuário cadastrou manualmente uma estratégia "IFR2 (Mean Reversion/Sobrevenda)"
+referenciando o critério `ifr_abaixo_limite` e o indicador IFR2 — mas o sistema não tinha esse
+indicador implementado ainda (só EMA9/EMA21/VWAP). Sem o IFR2 calculado e salvo, a IA não
+tinha como avaliar o critério (o número simplesmente não existia nos dados mandados pra ela),
+e o gráfico não tinha como mostrar a condição de sobrevenda visualmente.
+
+**Implementação:**
+- **`calculateIFR2(closes)`** em `common/indicators.ts` — fórmula clássica de Wilder
+  (suavização exponencial de ganhos/perdas médios), fixa em período 2 (não generalizada para
+  outros períodos, por decisão consciente — único uso atual é IFR2). Testado isoladamente
+  com casos de queda/alta/lateralização consistentes antes de integrar, confirmando
+  comportamento esperado (queda consistente → IFR2 tende a 0, alta consistente → tende a
+  100, lateral → oscila perto de 50).
+- **`HistoricalCandle.ifr2`** (campo novo, `Float?`) — calculado e persistido junto dos
+  outros indicadores em `CandlesService.fetchAndStore`.
+- **`criteria-catalog.ts`** — adicionado `ifr_abaixo_limite` (IFR2 do candle de entrada
+  abaixo do limite de sobrevenda definido pela estratégia, tipicamente 10).
+- **`buildNumericPayload`** (evaluation.service.ts) — `ifr2` incluído em cada candle do
+  payload mandado pra IA, tanto na avaliação por critérios quanto na dica de coaching
+  (mesma função usada nos dois fluxos).
+- **`TradeChart.tsx`** — painel separado embaixo do gráfico de candles (técnica de
+  `priceScaleId` customizado + `scaleMargins`, já que o `lightweight-charts` v4 não tem
+  painéis nativos — isso só chega na v5). Escala 0-100, linha do IFR2 em verde, duas linhas
+  tracejadas fixas marcando os níveis 10 (sobrevenda) e 90 (sobrecompra). O painel só
+  aparece quando há dados de IFR2 na sessão atual (`hasIFR2` checado antes de renderizar),
+  pra não reservar espaço vazio em sessões com ativos sem esse indicador calculado.
+
+**Atenção — candles antigos não têm IFR2 retroativamente:** candles baixados antes dessa
+mudança não têm `ifr2` no banco (campo fica `null`). Para usar a estratégia IFR2 num ativo já
+baixado anteriormente, é necessário **rebaixar o histórico** desse ativo (`POST
+/candles/fetch` de novo com o mesmo ticker/timeframe).
+
+**Mudança relacionada — `createMany` virou `upsert` transacional:** o método de gravação de
+candles usava `createMany` com `skipDuplicates: true`, que **pulava** candles já existentes
+em vez de atualizá-los. Isso significava que rebaixar um ativo não recalculava indicadores
+novos (como o IFR2) em candles antigos — eles continuavam com os valores antigos (sem o
+indicador novo) pra sempre. Corrigido para uma transação de `upsert` por candle (usando a
+unique constraint `assetId_timeframe_timestamp`), que atualiza todos os campos, incluindo
+indicadores, ao rebaixar um período já existente.
 
 ### Revisualização de gráfico (sem print)
 
@@ -669,7 +711,7 @@ DIY de eletrônica/robótica, fabricação de cockpit de sim racing.
 
 ---
 
-*Última atualização: documento revisado após a feature de dica de coaching sobre timing
-(entrada/saída, independente da justificativa) e a evolução dos critérios de confirmação
-para totalmente dinâmicos por estratégia (catálogo central + resolução automática, em vez
-de 3 critérios fixos hardcoded).*
+*Última atualização: documento revisado após a adição do indicador IFR2 (RSI período 2) para
+suportar estratégias de sobrevenda estatística, incluindo painel separado no gráfico e
+correção de `createMany`/`skipDuplicates` para `upsert` transacional (permite recalcular
+indicadores em candles já existentes ao rebaixar um ativo).*

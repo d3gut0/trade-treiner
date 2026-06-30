@@ -310,6 +310,7 @@ export class EvaluationService {
         ema9: c.ema9,
         ema21: c.ema21,
         vwap: c.vwap,
+        ifr2: c.ifr2,
       })),
     };
   }

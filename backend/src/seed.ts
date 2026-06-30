@@ -9,25 +9,33 @@ async function main() {
     data: [
       {
         nome: 'Cruzamento EMA9/EMA21',
-        descricao: 'Entrada quando EMA9 cruza EMA21 e o cruzamento e confirmado por fechamento de candle.',
+        descricao:
+          'Entrada quando EMA9 cruza EMA21 e o cruzamento e confirmado por fechamento de candle.',
         criterios: {
           indicadores: ['EMA9', 'EMA21'],
           regra: 'cruzamento',
-          confirmacao: ['fechamento_contrario', 'media_mudou_direcao'],
+          // chave unica e mais precisa para esse caso especifico (cruzamento
+          // + fechamento de confirmacao), em vez de combinar 2 criterios
+          // genericos que descreviam a mesma coisa de forma indireta
+          confirmacao: ['cruzamento_confirmado'],
         },
       },
       {
         nome: 'Pullback à VWAP',
-        descricao: 'Preço retorna a VWAP em tendência e reage no toque, com fechamento a favor da tendência principal.',
+        descricao:
+          'Preço retorna a VWAP em tendência e reage no toque, com fechamento a favor da tendência principal.',
         criterios: {
           indicadores: ['VWAP'],
           regra: 'pullback',
-          confirmacao: ['fechamento_contrario', 'rompimento_referencia'],
+          // chave unica que ja descreve toque + rejeicao a favor da tendencia,
+          // mais precisa que combinar fechamento_contrario + rompimento_referencia
+          confirmacao: ['toque_vwap_com_rejeicao'],
         },
       },
       {
         nome: 'Reversão com 3 critérios completos',
-        descricao: 'Só entra contra o movimento anterior se: fechamento contrário + rompimento de fundo/topo + EMA9 mudou de direção.',
+        descricao:
+          'Só entra contra o movimento anterior se: fechamento contrário + rompimento de fundo/topo + EMA9 mudou de direção.',
         criterios: {
           indicadores: ['EMA9', 'EMA21'],
           regra: 'reversao_confirmada',
@@ -39,26 +47,11 @@ async function main() {
         },
       },
       {
-        nome: 'Retorno à Média (EMA21)',
-        descricao: 'Ativos em forte tendência tendem a se afastar da EMA21. A entrada ocorre no candle de reversão gatilho após o preço tocar/aproximar-se da média e fechar a favor da tendência.',
-        criterios: {
-          indicadores: ['EMA21'],
-          regra: 'retorno_media',
-          confirmacao: ['toque_media', 'fechamento_a_favor'],
-        },
-      },
-      {
-        nome: 'Rompimento de Pivô',
-        descricao: 'Identificação de uma estrutura de alta ou baixa (pivô). A entrada é disparada no rompimento da cabeça do pivô (topo ou fundo anterior) com volume acima da média.',
-        criterios: {
-          indicadores: ['Volume'],
-          regra: 'rompimento_pivo',
-          confirmacao: ['rompimento_referencia', 'volume_acima_media'],
-        },
-      },
-      {
-        nome: 'IFR2 (Moneyness/Sobrevenda)',
-        descricao: 'Estratégia baseada em matemática/estatística. Compra-se no fechamento quando o IFR de 2 períodos estiver abaixo de 10 (ativo muito sobrevendido) buscando a saída em 2 ou 3 dias na máxima dos dois últimos candles.',
+        nome: 'IFR2 (Mean Reversion/Sobrevenda)',
+        descricao:
+          'Estratégia baseada em matemática/estatística (Larry Connors). Compra-se no fechamento ' +
+          'quando o IFR de 2 períodos estiver abaixo de 10 (ativo muito sobrevendido), buscando a ' +
+          'saída em 2 ou 3 dias na máxima dos dois últimos candles.',
         criterios: {
           indicadores: ['IFR2'],
           regra: 'sobrevenda_estatistica',
@@ -69,7 +62,7 @@ async function main() {
     skipDuplicates: true,
   });
 
-  console.log('Pronto. Novas estratégias inseridas com sucesso!');
+  console.log('Pronto.');
 }
 
 main()

@@ -14,6 +14,12 @@ interface Props {
   trades: SimulatedTrade[];
 }
 
+// id de price scale customizado para o painel de IFR2 - separa visualmente
+// do price scale principal (candles/EMA/VWAP), simulando um sub-painel
+// embaixo do grafico de preco (tecnica padrao no lightweight-charts v4,
+// que ainda nao tem paineis nativos como a v5).
+const IFR2_PRICE_SCALE_ID = 'ifr2-scale';
+
 export function TradeChart({ candles, trades }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
@@ -21,6 +27,13 @@ export function TradeChart({ candles, trades }: Props) {
   const ema9SeriesRef = useRef<ISeriesApi<'Line'> | null>(null);
   const ema21SeriesRef = useRef<ISeriesApi<'Line'> | null>(null);
   const vwapSeriesRef = useRef<ISeriesApi<'Line'> | null>(null);
+  const ifr2SeriesRef = useRef<ISeriesApi<'Line'> | null>(null);
+  const ifr2UpperBandRef = useRef<ISeriesApi<'Line'> | null>(null);
+  const ifr2LowerBandRef = useRef<ISeriesApi<'Line'> | null>(null);
+
+  // se algum candle visivel tem ifr2 calculado, mostramos o painel -
+  // isso evita reservar espaco vazio em ativos/sessoes sem essa estrategia
+  const hasIFR2 = candles.some((c) => c.ifr2 != null);
 
   // cria o chart uma unica vez
   useEffect(() => {
@@ -52,6 +65,10 @@ export function TradeChart({ candles, trades }: Props) {
       wickUpColor: '#22c55e',
       wickDownColor: '#ef4444',
     });
+    // reserva a faixa inferior do grafico para o painel de IFR2 (quando houver)
+    candleSeries.priceScale().applyOptions({
+      scaleMargins: { top: 0.05, bottom: 0.3 },
+    });
 
     const ema9Series = chart.addLineSeries({
       color: '#fbbf24',
@@ -70,11 +87,47 @@ export function TradeChart({ candles, trades }: Props) {
       title: 'VWAP',
     });
 
+    // painel de IFR2: price scale propria (0-100), confinada na faixa
+    // inferior do grafico (abaixo dos candles), com linhas de referencia
+    // de sobrevenda (10) e sobrecompra (90)
+    const ifr2Series = chart.addLineSeries({
+      color: '#34d399',
+      lineWidth: 2,
+      title: 'IFR2',
+      priceScaleId: IFR2_PRICE_SCALE_ID,
+    });
+    const ifr2UpperBand = chart.addLineSeries({
+      color: '#6b7280',
+      lineWidth: 1,
+      lineStyle: 2,
+      priceScaleId: IFR2_PRICE_SCALE_ID,
+      title: 'Sobrecompra (90)',
+      lastValueVisible: false,
+      crosshairMarkerVisible: false,
+    });
+    const ifr2LowerBand = chart.addLineSeries({
+      color: '#6b7280',
+      lineWidth: 1,
+      lineStyle: 2,
+      priceScaleId: IFR2_PRICE_SCALE_ID,
+      title: 'Sobrevenda (10)',
+      lastValueVisible: false,
+      crosshairMarkerVisible: false,
+    });
+
+    chart.priceScale(IFR2_PRICE_SCALE_ID).applyOptions({
+      scaleMargins: { top: 0.75, bottom: 0.02 },
+      borderVisible: true,
+    });
+
     chartRef.current = chart;
     candleSeriesRef.current = candleSeries;
     ema9SeriesRef.current = ema9Series;
     ema21SeriesRef.current = ema21Series;
     vwapSeriesRef.current = vwapSeries;
+    ifr2SeriesRef.current = ifr2Series;
+    ifr2UpperBandRef.current = ifr2UpperBand;
+    ifr2LowerBandRef.current = ifr2LowerBand;
 
     const handleResize = () => {
       if (containerRef.current) {
@@ -120,8 +173,28 @@ export function TradeChart({ candles, trades }: Props) {
       .map((c) => ({ time: toTime(c.timestamp), value: c.vwap as number }));
     vwapSeriesRef.current?.setData(vwapData);
 
+    if (hasIFR2) {
+      const ifr2Data: LineData[] = candles
+        .filter((c) => c.ifr2 != null)
+        .map((c) => ({ time: toTime(c.timestamp), value: c.ifr2 as number }));
+      ifr2SeriesRef.current?.setData(ifr2Data);
+
+      // linhas de referencia fixas em 10 e 90, cobrindo toda a janela visivel
+      const allTimes = candles.map((c) => toTime(c.timestamp));
+      const upperBandData: LineData[] = allTimes.map((time) => ({ time, value: 90 }));
+      const lowerBandData: LineData[] = allTimes.map((time) => ({ time, value: 10 }));
+      ifr2UpperBandRef.current?.setData(upperBandData);
+      ifr2LowerBandRef.current?.setData(lowerBandData);
+    } else {
+      // sem IFR2 nesta sessao/ativo - limpa qualquer dado residual de uma
+      // troca de sessao anterior que tivesse IFR2
+      ifr2SeriesRef.current?.setData([]);
+      ifr2UpperBandRef.current?.setData([]);
+      ifr2LowerBandRef.current?.setData([]);
+    }
+
     chartRef.current?.timeScale().fitContent();
-  }, [candles]);
+  }, [candles, hasIFR2]);
 
   // desenha marcadores de entrada/saida das trades simuladas
   useEffect(() => {
@@ -162,5 +235,14 @@ export function TradeChart({ candles, trades }: Props) {
     candleSeriesRef.current.setMarkers(markers);
   }, [trades, candles]);
 
-  return <div ref={containerRef} style={{ width: '100%' }} />;
+  return (
+    <div>
+      <div ref={containerRef} style={{ width: '100%' }} />
+      {hasIFR2 && (
+        <p style={{ color: '#6b7280', fontSize: '0.75rem', marginTop: '0.25rem', marginBottom: 0 }}>
+          Painel inferior: IFR2 (0-100) — linhas tracejadas em 10 (sobrevenda) e 90 (sobrecompra)
+        </p>
+      )}
+    </div>
+  );
 }

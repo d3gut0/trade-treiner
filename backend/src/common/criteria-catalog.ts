@@ -51,6 +51,14 @@ export const CRITERIA_CATALOG: Record<string, CriterioDefinicao> = {
       'O preço retornou até a linha de VWAP durante uma tendência e o candle de toque mostrou ' +
       'rejeição (pavio na direção contrária ao toque, fechamento a favor da tendência).',
   },
+  ifr_abaixo_limite: {
+    chave: 'ifr_abaixo_limite',
+    label: 'O IFR2 estava abaixo do limite de sobrevenda (ex: 10)',
+    descricao:
+      'O IFR2 (Índice de Força Relativa de 2 períodos) do candle de entrada estava abaixo do ' +
+      'limite de sobrevenda estatística definido pela estratégia (tipicamente 10), indicando ' +
+      'que o ativo caiu de forma anormalmente forte em relação ao seu próprio histórico recente.',
+  },
 };
 
 /**
